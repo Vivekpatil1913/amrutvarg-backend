@@ -3,12 +3,17 @@ import authRoutes from "./auth.routes.js";
 import announcementsRoutes from "../modules/announcements/announcements.routes.js";
 import storiesRoutes from "../modules/stories/stories.routes.js";
 import vargsRoutes from "../modules/vargs/vargs.routes.js";
+import vargsSectionRoutes from "../modules/vargs/section.routes.js";
 import contactsRoutes from "../modules/contacts/contacts.routes.js";
 import settingsRoutes from "../modules/settings/settings.routes.js";
 import submissionsRoutes from "../modules/submissions/submissions.routes.js";
 import mediaRoutes from "../modules/media/media.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import heroRoutes from "../modules/hero/hero.routes.js";
+import aboutRoutes from "../modules/about/about.routes.js";
+import activitiesRoutes from "../modules/activities/activities.routes.js";
+import sessionRoutes from "../modules/session/session.routes.js";
+import yashogathaRoutes from "../modules/yashogatha/yashogatha.routes.js";
 import formConfigRoutes from "../modules/forms/forms.routes.js";
 import { masterRouters } from "../modules/masters/masters.routes.js";
 import { MASTER_KEYS } from "../modules/masters/masters.config.js";
@@ -51,9 +56,14 @@ export function buildRouter() {
   router.use("/public/announcements", publicOnly(announcementsRoutes));
   router.use("/public/stories", publicOnly(storiesRoutes));
   router.use("/public/vargs", publicOnly(vargsRoutes));
+  router.use("/public/vargs-section", publicOnly(vargsSectionRoutes));
   router.use("/public/contacts", publicOnly(contactsRoutes));
   router.use("/public/settings", publicOnly(settingsRoutes));
   router.use("/public/hero", publicOnly(heroRoutes));
+  router.use("/public/about", publicOnly(aboutRoutes));
+  router.use("/public/activities", publicOnly(activitiesRoutes));
+  router.use("/public/session", publicOnly(sessionRoutes));
+  router.use("/public/yashogatha", publicOnly(yashogathaRoutes));
   router.use("/public/forms", publicOnly(formConfigRoutes));
 
   // Geographical masters: the same router serves the site's dropdowns and the
@@ -68,12 +78,17 @@ export function buildRouter() {
   // Admin CMS
   router.use("/admin/announcements", announcementsRoutes);
   router.use("/admin/stories", storiesRoutes);
+  router.use("/admin/vargs-section", vargsSectionRoutes);
   router.use("/admin/vargs", vargsRoutes);
   router.use("/admin/contacts", contactsRoutes);
   router.use("/admin/settings", settingsRoutes);
   router.use("/admin/submissions", submissionsRoutes);
   router.use("/admin/media", mediaRoutes);
   router.use("/admin/hero", heroRoutes);
+  router.use("/admin/about", aboutRoutes);
+  router.use("/admin/activities", activitiesRoutes);
+  router.use("/admin/session", sessionRoutes);
+  router.use("/admin/yashogatha", yashogathaRoutes);
   router.use("/admin/forms", formConfigRoutes);
   for (const key of MASTER_KEYS) {
     router.use(`/admin/masters/${key}`, masterRouters[key]);

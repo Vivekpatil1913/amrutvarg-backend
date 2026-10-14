@@ -26,6 +26,9 @@ const schema = z.object({
   short_mr: z.string().max(500).optional().default(""),
   short_en: z.string().max(500).optional().default(""),
   image_key: z.string().max(200).optional().nullable(),
+  // An uploaded photograph. image_key stays for the bundled artwork.
+  image_media_id: z.number().int().positive().nullable().optional().default(null),
+  image_url: z.string().trim().max(500).optional().default(""),
   content: z.record(z.any()).optional().default({}),
   featured: z.boolean().optional().default(false),
   published: z.boolean().optional().default(false),
@@ -40,6 +43,10 @@ router.get(
     const page = Math.max(1, parseInt(req.query.page || "1"));
     const pageSize = Math.min(50, Math.max(1, parseInt(req.query.limit || "8")));
     const category = req.query.category || "";
+    // The site's own search box sends this; without it a search would quietly
+    // return the unfiltered page.
+    const search = String(req.query.search || "").trim().slice(0, 100);
+    const featured = req.query.featured;
     const offset = (page - 1) * pageSize;
 
     const conditions = ["published = TRUE", "deleted_at IS NULL"];
@@ -47,6 +54,19 @@ router.get(
     if (category && CATEGORIES.includes(category)) {
       params.push(category);
       conditions.push(`category = $${params.length}`);
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(
+        `(title_mr ILIKE $${params.length} OR title_en ILIKE $${params.length}
+          OR short_mr ILIKE $${params.length} OR short_en ILIKE $${params.length}
+          OR slug ILIKE $${params.length})`
+      );
+    }
+    // The home page strip asks for the featured ones only.
+    if (featured === "true" || featured === "false") {
+      params.push(featured === "true");
+      conditions.push(`featured = $${params.length}`);
     }
     const where = `WHERE ${conditions.join(" AND ")}`;
 
@@ -57,8 +77,10 @@ router.get(
 
     params.push(pageSize, offset);
     const rows = await query(
+      // `content` travels with the listing so the home strip and the
+      // /yashogatha page render a story without a request each.
       `SELECT id, slug, category, title_mr, title_en, short_mr, short_en,
-              image_key, featured, display_order
+              image_key, image_media_id, image_url, featured, display_order, content
        FROM stories ${where}
        ORDER BY featured DESC, display_order ASC, created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -122,6 +144,7 @@ router.get(
     params.push(pageSize, offset);
     const rows = await query(
       `SELECT id, slug, category, title_mr, title_en, short_mr, short_en,
+              image_key, image_media_id, image_url,
               featured, published, display_order, created_at, updated_at
        FROM stories ${where}
        ORDER BY featured DESC, display_order ASC, created_at DESC
@@ -158,12 +181,13 @@ router.post(
     const [row] = await query(
       `INSERT INTO stories
          (slug, category, title_mr, title_en, short_mr, short_en,
-          image_key, content, featured, published, display_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          image_key, image_media_id, image_url, content, featured, published, display_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         d.slug, d.category, d.title_mr, d.title_en,
         d.short_mr, d.short_en, d.image_key || null,
+        d.image_media_id ?? null, d.image_url || "",
         JSON.stringify(d.content), d.featured, d.published, d.display_order,
       ]
     );
@@ -189,12 +213,13 @@ router.put(
     const [row] = await query(
       `UPDATE stories SET
          slug=$1, category=$2, title_mr=$3, title_en=$4,
-         short_mr=$5, short_en=$6, image_key=$7, content=$8,
-         featured=$9, published=$10, display_order=$11, updated_at=NOW()
-       WHERE id=$12 RETURNING *`,
+         short_mr=$5, short_en=$6, image_key=$7, image_media_id=$8, image_url=$9,
+         content=$10, featured=$11, published=$12, display_order=$13, updated_at=NOW()
+       WHERE id=$14 RETURNING *`,
       [
         d.slug, d.category, d.title_mr, d.title_en,
         d.short_mr, d.short_en, d.image_key || null,
+        d.image_media_id ?? null, d.image_url || "",
         JSON.stringify(d.content), d.featured, d.published, d.display_order,
         req.params.id,
       ]

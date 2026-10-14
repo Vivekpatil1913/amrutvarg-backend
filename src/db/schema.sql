@@ -296,3 +296,84 @@ CREATE TABLE IF NOT EXISTS talukas (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_talukas_name ON talukas (district_id, LOWER(name_mr)) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_talukas_district ON talukas(district_id, deleted_at);
+
+-- ====================================================
+-- HOMEPAGE "WHAT IS AMRUT VARG?" SECTION
+-- Same single-row draft/published shape as hero_section: publishing copies
+-- draft -> published in one statement, so a failed publish can never leave the
+-- live page half-updated.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS about_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- HOMEPAGE "KEY ACTIVITIES" SECTION
+-- Same single-row draft/published shape as hero_section and about_section.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS activities_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- HOMEPAGE "DAILY SESSION PLAN" SECTION
+-- Same single-row draft/published shape as the other homepage sections.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS session_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- YASHOGATHA SECTION WORDING
+-- The heading, labels and disclaimer around the success stories. The stories
+-- themselves live in the `stories` table and are not duplicated here.
+-- ====================================================
+
+-- Wording and layout for the "कार्यरत अमृत वर्ग" section. The vargs themselves
+-- live in `vargs`; the district and vibhag counts are read from the masters.
+CREATE TABLE IF NOT EXISTS vargs_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS yashogatha_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- A story can carry an uploaded photograph. `image_key` stays for the bundled
+-- artwork the seeded stories use; an uploaded image takes precedence.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS image_media_id INTEGER REFERENCES media_assets(id) ON DELETE SET NULL;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+-- A slug must be unique among LIVE stories only. The original table-level
+-- UNIQUE kept a soft-deleted story's slug reserved for ever, so a deleted
+-- story could never be recreated at the same address.
+ALTER TABLE stories DROP CONSTRAINT IF EXISTS stories_slug_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stories_slug ON stories (slug) WHERE deleted_at IS NULL;
