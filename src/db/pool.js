@@ -3,6 +3,12 @@ import { env } from "../config/env.js";
 
 const { Pool } = pg;
 
+// Keep DATE (oid 1082) as the plain 'YYYY-MM-DD' string Postgres sends. Parsed
+// into a Date it lands on local midnight, which JSON serialises back as UTC and
+// shifts the day backwards everywhere ahead of UTC — in IST a date saved as
+// 2026-10-20 reads back as 2026-10-19, and drifts another day on every edit.
+pg.types.setTypeParser(1082, (value) => value);
+
 export const pool = new Pool({
   host: env.db.host,
   port: env.db.port,

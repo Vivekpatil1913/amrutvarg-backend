@@ -5,6 +5,7 @@ import { requireAdmin } from "../../middleware/auth.js";
 import {
   asyncHandler, notFound, success, paginated, validation,
 } from "../../lib/errors.js";
+import { validateGeo } from "../masters/geo.validate.js";
 
 const router = Router();
 
@@ -129,6 +130,15 @@ router.post(
     if (!parsed.success)
       throw validation(parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
     const d = parsed.data;
+
+    // The vibhag/district/taluka combination is checked against the masters, so
+    // a mistyped or mismatched name cannot reach the table the way the earlier
+    // free-text inputs allowed.
+    const geoIssues = await validateGeo(
+      { vibhag: d.vibhag_mr, district: d.district_mr, taluka: d.taluka },
+      { vibhag: "vibhag_mr", district: "district_mr", taluka: "taluka" }
+    );
+    if (geoIssues.length) throw validation(geoIssues);
     const [row] = await query(
       `INSERT INTO vargs
          (vibhag_mr, vibhag_en, district_mr, district_en, taluka,
@@ -156,6 +166,15 @@ router.put(
     if (!parsed.success)
       throw validation(parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
     const d = parsed.data;
+
+    // The vibhag/district/taluka combination is checked against the masters, so
+    // a mistyped or mismatched name cannot reach the table the way the earlier
+    // free-text inputs allowed.
+    const geoIssues = await validateGeo(
+      { vibhag: d.vibhag_mr, district: d.district_mr, taluka: d.taluka },
+      { vibhag: "vibhag_mr", district: "district_mr", taluka: "taluka" }
+    );
+    if (geoIssues.length) throw validation(geoIssues);
     const [row] = await query(
       `UPDATE vargs SET
          vibhag_mr=$1, vibhag_en=$2, district_mr=$3, district_en=$4,

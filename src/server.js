@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { checkConnection, pool } from "./db/pool.js";
+import { ensureMasters } from "./modules/masters/masters.seed.js";
 import { env } from "./config/env.js";
 import { mkdirSync } from "fs";
 import path from "path";
@@ -11,6 +12,7 @@ import path from "path";
 
 async function main() {
   await checkConnection();
+  await ensureMasters();
 
   const app = createApp();
   const server = app.listen(env.port, () => {

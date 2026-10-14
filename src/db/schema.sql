@@ -182,3 +182,117 @@ CREATE TABLE IF NOT EXISTS rate_limit_hits (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rate_limit ON rate_limit_hits(ip, bucket, hit_at);
+
+-- ====================================================
+-- HOMEPAGE HERO SECTION
+-- Single row (id = 1) holding the whole section config.
+-- `draft` is the admin working copy; `published` is what the
+-- public API serves. Publishing copies draft -> published in one
+-- statement, so a failed publish can never leave the live site
+-- half-updated.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS hero_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- PUBLIC FORM CONFIGURATION
+-- Presentation text and availability for each public form.
+-- Field definitions, validation rules and submission endpoints are NOT stored
+-- here: they stay in the form components and are deliberately not configurable.
+-- `draft` is the admin working copy; `published` is what the website reads.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS form_configs (
+  form_key     TEXT PRIMARY KEY,
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- Submissions are registrations from real people, so deleting one moves it to
+-- a trash tab rather than destroying it. Added separately because the table
+-- above is only created when absent, and existing databases already have it.
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_submissions_deleted ON form_submissions(deleted_at);
+
+-- ====================================================
+-- GEOGRAPHICAL MASTERS
+-- state -> vibhag -> district -> taluka.
+-- `former_names` carries retired spellings (Ahmednagar, Osmanabad, कोंकण) so
+-- records written before a rename still resolve to the right master row
+-- without rewriting any existing data.
+-- Uniqueness is case-insensitive and scoped to the parent, and applies only to
+-- live rows so a soft-deleted name can be reused.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS states (
+  id            SERIAL PRIMARY KEY,
+  name_mr       TEXT NOT NULL,
+  name_en       TEXT NOT NULL DEFAULT '',
+  code          TEXT NOT NULL,
+  former_names  TEXT[] NOT NULL DEFAULT '{}',
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_states_name ON states (LOWER(name_mr)) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_states_code ON states (UPPER(code)) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS vibhags (
+  id            SERIAL PRIMARY KEY,
+  state_id      INTEGER NOT NULL REFERENCES states(id) ON DELETE RESTRICT,
+  name_mr       TEXT NOT NULL,
+  name_en       TEXT NOT NULL DEFAULT '',
+  code          TEXT NOT NULL DEFAULT '',
+  former_names  TEXT[] NOT NULL DEFAULT '{}',
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vibhags_name ON vibhags (state_id, LOWER(name_mr)) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_vibhags_state ON vibhags(state_id, deleted_at);
+
+CREATE TABLE IF NOT EXISTS districts (
+  id            SERIAL PRIMARY KEY,
+  vibhag_id     INTEGER NOT NULL REFERENCES vibhags(id) ON DELETE RESTRICT,
+  name_mr       TEXT NOT NULL,
+  name_en       TEXT NOT NULL DEFAULT '',
+  code          TEXT NOT NULL DEFAULT '',
+  former_names  TEXT[] NOT NULL DEFAULT '{}',
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_districts_name ON districts (vibhag_id, LOWER(name_mr)) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_districts_vibhag ON districts(vibhag_id, deleted_at);
+
+CREATE TABLE IF NOT EXISTS talukas (
+  id            SERIAL PRIMARY KEY,
+  district_id   INTEGER NOT NULL REFERENCES districts(id) ON DELETE RESTRICT,
+  name_mr       TEXT NOT NULL,
+  name_en       TEXT NOT NULL DEFAULT '',
+  code          TEXT NOT NULL DEFAULT '',
+  former_names  TEXT[] NOT NULL DEFAULT '{}',
+  is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_talukas_name ON talukas (district_id, LOWER(name_mr)) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_talukas_district ON talukas(district_id, deleted_at);

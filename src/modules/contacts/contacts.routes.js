@@ -5,6 +5,7 @@ import { requireAdmin } from "../../middleware/auth.js";
 import {
   asyncHandler, notFound, success, paginated, validation,
 } from "../../lib/errors.js";
+import { validateGeo, validateDistrictList } from "../masters/geo.validate.js";
 
 const router = Router();
 
@@ -110,6 +111,13 @@ router.post("/", requireAdmin, asyncHandler(async (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) throw validation(parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
   const d = parsed.data;
+
+  // Division must be a real vibhag, and every district listed must belong to it.
+  const geoIssues = [
+    ...(await validateGeo({ vibhag: d.division_mr }, { vibhag: "division_mr" })),
+    ...(await validateDistrictList(d.districts, d.division_mr, "districts")),
+  ];
+  if (geoIssues.length) throw validation(geoIssues);
   const [row] = await query(
     `INSERT INTO district_contacts (division_mr, division_en, role, districts, name, email, phone, is_active, display_order)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -124,6 +132,13 @@ router.put("/:id", requireAdmin, asyncHandler(async (req, res) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) throw validation(parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
   const d = parsed.data;
+
+  // Division must be a real vibhag, and every district listed must belong to it.
+  const geoIssues = [
+    ...(await validateGeo({ vibhag: d.division_mr }, { vibhag: "division_mr" })),
+    ...(await validateDistrictList(d.districts, d.division_mr, "districts")),
+  ];
+  if (geoIssues.length) throw validation(geoIssues);
   const [row] = await query(
     `UPDATE district_contacts SET division_mr=$1, division_en=$2, role=$3, districts=$4, name=$5, email=$6, phone=$7, is_active=$8, display_order=$9, updated_at=NOW() WHERE id=$10 RETURNING *`,
     [d.division_mr, d.division_en, d.role, d.districts, d.name, d.email, d.phone, d.is_active, d.display_order, req.params.id]

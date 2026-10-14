@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "db:migrate": "node migrations/migrate.js",
     "db:seed": "node seeds/seed.js",
-    "db:setup": "node migrations/migrate.js && node seeds/seed.js"
+    "db:setup": "node migrations/migrate.js && node seeds/seed.js",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
