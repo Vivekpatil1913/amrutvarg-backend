@@ -6,8 +6,13 @@ import { asyncHandler, notFound, success, paginated, AppError } from "../../lib/
 import path from "path";
 import { unlink } from "fs/promises";
 import { env } from "../../config/env.js";
+import { z } from "zod";
+import { validation } from "../../lib/errors.js";
+import { hasAllowedImageSignature } from "../../middleware/upload.js";
 
 const router = Router();
+const idSchema = z.string().regex(/^[1-9]\d*$/).refine((value) => Number.isSafeInteger(Number(value))).transform(Number);
+const altSchema = z.object({ alt_text: z.string().trim().max(500).optional().default("") });
 
 router.get("/", requireAdmin, asyncHandler(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page || "1"));
@@ -41,38 +46,58 @@ router.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw new AppError("VALIDATION_ERROR", "No file uploaded", 422);
 
+    const alt = altSchema.safeParse(req.body);
+    if (!alt.success) {
+      await unlink(req.file.path).catch(() => {});
+      throw validation(alt.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
+    }
+    if (!(await hasAllowedImageSignature(req.file.path))) {
+      await unlink(req.file.path).catch(() => {});
+      throw new AppError("VALIDATION_ERROR", "Uploaded file content is not a supported image", 422);
+    }
+
     const url = `/uploads/media/${req.file.filename}`;
-    const [row] = await query(
-      `INSERT INTO media_assets (filename, original_name, mime_type, size_bytes, path, url, alt_text, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [
-        req.file.filename, req.file.originalname, req.file.mimetype,
-        req.file.size, req.file.path, url,
-        req.body.alt_text || "", req.user.id,
-      ]
-    );
-    return success(res, row, 201);
+    try {
+      const [row] = await query(
+        `INSERT INTO media_assets (filename, original_name, mime_type, size_bytes, path, url, alt_text, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [
+          req.file.filename, req.file.originalname.slice(0, 255), req.file.mimetype,
+          req.file.size, req.file.path, url,
+          alt.data.alt_text, req.user.id,
+        ]
+      );
+      return success(res, row, 201);
+    } catch (error) {
+      await unlink(req.file.path).catch(() => {});
+      throw error;
+    }
   })
 );
 
 router.put("/:id/alt", requireAdmin, asyncHandler(async (req, res) => {
-  const { alt_text } = req.body;
+  const parsedId = idSchema.safeParse(req.params.id);
+  if (!parsedId.success) throw validation([{ field: "id", message: "A positive record ID is required" }]);
+  const parsed = altSchema.safeParse(req.body);
+  if (!parsed.success) throw validation(parsed.error.issues.map((i) => ({ field: i.path.join("."), message: i.message })));
   const [row] = await query(
     `UPDATE media_assets SET alt_text = $1 WHERE id = $2 AND deleted_at IS NULL RETURNING *`,
-    [alt_text || "", req.params.id]
+    [parsed.data.alt_text, parsedId.data]
   );
   if (!row) throw notFound("Media asset");
   return success(res, row);
 }));
 
 router.delete("/:id", requireAdmin, asyncHandler(async (req, res) => {
+  const parsedId = idSchema.safeParse(req.params.id);
+  if (!parsedId.success) throw validation([{ field: "id", message: "A positive record ID is required" }]);
   const asset = await queryOne(
-    `SELECT * FROM media_assets WHERE id = $1 AND deleted_at IS NULL`, [req.params.id]
+    `SELECT * FROM media_assets WHERE id = $1 AND deleted_at IS NULL`, [parsedId.data]
   );
   if (!asset) throw notFound("Media asset");
 
   // Soft delete only — don't delete file in case it's still referenced
-  await query(`UPDATE media_assets SET deleted_at = NOW() WHERE id = $1`, [req.params.id]);
+  await query(`UPDATE media_assets SET deleted_at = NOW() WHERE id = $1`, [parsedId.data]);
   return success(res, { id: asset.id, deleted: true });
 }));
 

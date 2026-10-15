@@ -2,17 +2,26 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
+import { unlink } from "fs/promises";
 import { query, queryOne } from "../db/pool.js";
 import { requireAuth } from "../middleware/auth.js";
-import { uploadPhoto } from "../middleware/upload.js";
+import { uploadPhoto, hasAllowedImageSignature } from "../middleware/upload.js";
 import { asyncHandler, unauthorized, success, AppError, validation, conflict } from "../lib/errors.js";
 import { env } from "../config/env.js";
 
 const router = Router();
+const loginLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts. Please try again later." } },
+});
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().trim().email().max(255).transform((value) => value.toLowerCase()),
+  password: z.string().min(1).max(128),
 });
 
 const profileSchema = z.object({
@@ -35,6 +44,7 @@ const publicUser = (user) => ({
 
 router.post(
   "/login",
+  loginLimit,
   asyncHandler(async (req, res) => {
     const body = loginSchema.safeParse(req.body);
     if (!body.success) throw unauthorized("Invalid credentials");
@@ -120,7 +130,12 @@ router.patch(
   asyncHandler(async (req, res) => {
     const parsed = profileSchema.safeParse(req.body);
     if (!parsed.success) {
+      if (req.file) await unlink(req.file.path).catch(() => {});
       throw validation(parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })));
+    }
+    if (req.file && !(await hasAllowedImageSignature(req.file.path, { allowGif: false, expectedMime: req.file.mimetype }))) {
+      await unlink(req.file.path).catch(() => {});
+      throw new AppError("VALIDATION_ERROR", "Uploaded file content is not a supported image", 422);
     }
 
     const avatarUrl = req.file ? `/uploads/photos/${req.file.filename}` : null;
@@ -134,6 +149,7 @@ router.patch(
         [parsed.data.name, parsed.data.email, avatarUrl, req.user.id]
       );
     } catch (error) {
+      if (req.file) await unlink(req.file.path).catch(() => {});
       if (error.code === "23505") throw conflict("That email address is already in use", "email");
       throw error;
     }

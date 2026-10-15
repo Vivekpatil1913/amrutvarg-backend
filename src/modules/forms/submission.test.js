@@ -148,6 +148,11 @@ test("a future date of birth is rejected", () => {
   rejects(participantSchema, { ...collegeParticipant, dateOfBirth: "2099-01-01" }, "future dob");
 });
 
+test("impossible calendar dates are rejected", () => {
+  rejects(participantSchema, { ...collegeParticipant, dateOfBirth: "2004-02-31" }, "overflow date");
+  rejects(leaderSchema, { ...leader, vargDate: "2026-04-31" }, "impossible event date");
+});
+
 test("declaration must be accepted", () => {
   rejects(participantSchema, { ...collegeParticipant, declarationAccepted: false }, "declined");
   rejects(participantSchema, { ...schoolParticipant, declarationAccepted: false }, "school declined");
@@ -182,4 +187,22 @@ test("an unknown course value is rejected", () => {
 
 test("an unknown gender is rejected", () => {
   rejects(participantSchema, { ...collegeParticipant, gender: "X" }, "unlisted gender");
+});
+
+test("participant dropdown values and field length limits are enforced", () => {
+  rejects(participantSchema, { ...schoolParticipant, standard: "13" }, "invalid school standard");
+  rejects(participantSchema, { ...collegeParticipant, bloodGroup: "unknown" }, "invalid blood group");
+  rejects(participantSchema, { ...collegeParticipant, semester: 5 }, "invalid semester");
+  rejects(participantSchema, { ...collegeParticipant, address: "a".repeat(501) }, "long address");
+});
+
+test("numeric varg identifiers and phone digits are validated", () => {
+  rejects(participantSchema, { ...collegeParticipant, amrutVargId: "not-an-id" }, "non-numeric varg ID");
+  rejects(leaderSchema, { ...leader, institutionPhone: "++++++++" }, "punctuation-only phone");
+});
+
+test("unknown public submission fields are stripped from parsed data", () => {
+  const parsed = participantSchema.parse({ ...collegeParticipant, admin: true, deleted_at: "now" });
+  assert.equal("admin" in parsed, false);
+  assert.equal("deleted_at" in parsed, false);
 });

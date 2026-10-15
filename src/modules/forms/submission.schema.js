@@ -20,11 +20,16 @@ const MAX_VARGS = 10000;
 const GENDERS = ["MALE", "FEMALE", "OTHER"];
 const COLLEGE_COURSES = ["BBA", "BCA", "BTECH_COSMETICS", "BSC_IT"];
 
-const isRealDate = (v) => ISO_DATE.test(v) && !Number.isNaN(new Date(`${v}T00:00:00`).getTime());
+const isRealDate = (v) => {
+  if (typeof v !== "string" || !ISO_DATE.test(v)) return false;
+  const [year, month, day] = v.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
 const isPastDate = (v) => new Date(`${v}T00:00:00`) < new Date(new Date().toDateString());
 
-const required = (label) => z.string().trim().min(1, `${label} is required`);
-const optionalText = z.string().trim().optional();
+const required = (label, max = 255) => z.string().trim().min(1, `${label} is required`).max(max, `${label} cannot exceed ${max} characters`);
+const optionalText = (max = 2000) => z.string().trim().max(max, `Cannot exceed ${max} characters`).optional();
 
 const dateOfBirth = z
   .string()
@@ -32,6 +37,8 @@ const dateOfBirth = z
   .refine(isPastDate, "Date of birth must be in the past");
 
 const mobile = (label) => z.string().trim().regex(MOBILE, `${label} must be a valid 10-digit mobile number`);
+
+const validPhone = (v) => PHONE.test(v) && (v.match(/\d/g) || []).length >= 7 && (v.match(/\d/g) || []).length <= 15;
 
 // An optional field is only checked when the visitor actually filled it in,
 // matching `v.field.trim() && !isValid(...)` in the browser.
@@ -43,40 +50,40 @@ const optionalMatching = (re, message) =>
 // carries only the short form's keys and course === 'SCHOOL_STUDENT'.
 
 const schoolParticipant = z.object({
-  amrutVargId: z.union([z.number(), z.string()]).nullable().optional(),
+  amrutVargId: z.number().int().positive().nullable().optional(),
   name: required("Name"),
   gender: z.enum(GENDERS),
   dateOfBirth,
   course: z.literal("SCHOOL_STUDENT"),
-  standard: z.union([z.string().trim().min(1), z.number()]),
+  standard: z.enum(Array.from({ length: 12 }, (_, i) => String(i + 1))),
   parentGuardianName: required("Parent or guardian name"),
   declarationAccepted: z.literal(true),
 });
 
 const collegeParticipant = z.object({
-  amrutVargId: z.union([z.number(), z.string()]).nullable().optional(),
+  amrutVargId: z.number().int().positive().nullable().optional(),
   name: required("Name"),
   mobile: mobile("Mobile"),
   education: required("Education"),
   gender: z.enum(GENDERS),
   dateOfBirth,
-  bloodGroup: optionalText,
+  bloodGroup: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).optional().or(z.literal("")),
   whatsappNumber: optionalMatching(MOBILE, "WhatsApp number must be a valid 10-digit mobile number"),
   email: optionalMatching(EMAIL, "Enter a valid email address"),
   course: z.enum(COLLEGE_COURSES),
-  academicYear: z.coerce.number().int(),
-  semester: z.coerce.number().int(),
-  rollNumber: optionalText,
-  address: required("Address"),
+  academicYear: z.coerce.number().int().min(1).max(4),
+  semester: z.coerce.number().int().min(1).max(4),
+  rollNumber: optionalText(50),
+  address: required("Address", 500),
   parentGuardianName: required("Parent or guardian name"),
   cityTaluka: required("City or taluka"),
   district: required("District"),
   pinCode: z.string().trim().regex(PIN, "Enter a valid 6-digit PIN code"),
-  languagesKnown: z.array(z.string()).default([]),
-  otherLanguage: optionalText,
-  skills: optionalText,
+  languagesKnown: z.array(z.enum(["MARATHI", "HINDI", "ENGLISH", "OTHER"])).max(4).default([]),
+  otherLanguage: optionalText(100),
+  skills: optionalText(2000),
   emergencyContactName: required("Emergency contact name"),
-  emergencyContactRelationship: required("Emergency contact relationship"),
+  emergencyContactRelationship: required("Emergency contact relationship", 100),
   emergencyContactPhone: mobile("Emergency contact phone"),
   declarationAccepted: z.literal(true),
 }).refine(
@@ -103,9 +110,9 @@ export const organizerSchema = z.object({
 
 export const leaderSchema = z.object({
   leaderName: required("Leader name"),
-  institutionName: required("Institution name"),
+  institutionName: required("Institution name", 500),
   institutionEmail: optionalMatching(EMAIL, "Enter a valid email address"),
-  institutionPhone: optionalMatching(PHONE, "Enter a valid phone number"),
+  institutionPhone: z.string().trim().max(20).optional().refine((v) => !v || validPhone(v), { message: "Enter a valid phone number" }),
   district: required("District"),
   division: required("Division"),
   taluka: required("Taluka"),
@@ -128,8 +135,8 @@ export const leaderSchema = z.object({
       .max(MAX_VARGS, `Must not exceed ${MAX_VARGS}`)
       .optional()
   ),
-  specialNote: optionalText,
-  organizerEnrollment: optionalText,
+  specialNote: optionalText(2000),
+  organizerEnrollment: optionalText(5000),
 });
 
 export const SUBMISSION_SCHEMAS = {

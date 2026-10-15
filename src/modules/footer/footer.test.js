@@ -103,20 +103,17 @@ test("every allowlisted platform is accepted", () => {
   }
 });
 
-test("a platform the site cannot draw is rejected", () => {
+test("custom platform names are accepted when paired with a supported icon", () => {
   const c = clone();
-  c.social[0].platform = "myspace";
-  const r = parseFooter(c);
-  assert.equal(r.success, false);
-  assert.ok(r.error.issues.some((i) => i.path.join(".") === "social.0.platform"));
+  c.social[0].platform = "Mastodon";
+  c.social[0].icon = "link";
+  assert.equal(parseFooter(c).success, true);
 });
 
-test("the same platform cannot be listed twice", () => {
+test("the same platform may have multiple profile links", () => {
   const c = clone();
   c.social[1].platform = c.social[0].platform;
-  const r = parseFooter(c);
-  assert.equal(r.success, false);
-  assert.ok(r.error.issues.some((i) => /already listed/.test(i.message)));
+  assert.equal(parseFooter(c).success, true);
 });
 
 test("a social profile with no address is valid — it just hides the icon", () => {
@@ -139,9 +136,19 @@ test("a social profile accepts a real address", () => {
   assert.equal(parseFooter(c).success, true);
 });
 
-test("more social profiles than there are platforms is rejected", () => {
+test("up to 30 custom social profiles are accepted", () => {
   const c = clone();
-  c.social = [...c.social, { id: "soc-extra", platform: "facebook", url: "", label_mr: "", label_en: "", enabled: true }];
+  c.social = Array.from({ length: 30 }, (_, i) => ({
+    id: `soc-${i}`,
+    platform: `Network ${i}`,
+    icon: "link",
+    url: "",
+    label_mr: "",
+    label_en: "",
+    enabled: true,
+  }));
+  assert.equal(parseFooter(c).success, true);
+  c.social.push({ id: "soc-31", platform: "Too many", icon: "link", url: "", label_mr: "", label_en: "", enabled: true });
   assert.equal(parseFooter(c).success, false);
 });
 

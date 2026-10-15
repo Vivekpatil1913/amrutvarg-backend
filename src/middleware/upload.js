@@ -1,6 +1,7 @@
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
+import { readFile } from "fs/promises";
 import { env } from "../config/env.js";
 import { AppError } from "../lib/errors.js";
 
@@ -27,9 +28,19 @@ function imageFilter(req, file, cb) {
   cb(new AppError("VALIDATION_ERROR", "Only image files are allowed (JPEG, PNG, WebP, GIF)", 422));
 }
 
+export async function hasAllowedImageSignature(filePath, { allowGif = true, expectedMime } = {}) {
+  const bytes = await readFile(filePath);
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const webp = bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  const gif = allowGif && bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.toString("ascii", 0, 6));
+  const detected = jpeg ? "image/jpeg" : png ? "image/png" : webp ? "image/webp" : gif ? "image/gif" : "";
+  return Boolean(detected) && (!expectedMime || detected === expectedMime);
+}
+
 export const uploadPhoto = multer({
   storage: photoStorage,
-  limits: { fileSize: env.upload.maxMb * 1024 * 1024 },
+  limits: { fileSize: Math.min(env.upload.maxMb, 3) * 1024 * 1024 },
   fileFilter: imageFilter,
 });
 
