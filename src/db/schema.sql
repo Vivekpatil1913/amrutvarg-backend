@@ -11,10 +11,13 @@ CREATE TABLE IF NOT EXISTS admin_users (
   name        TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role        TEXT NOT NULL DEFAULT 'admin',  -- admin | superadmin
+  avatar_url  TEXT,
   is_active   BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
   id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
@@ -333,6 +336,55 @@ CREATE TABLE IF NOT EXISTS activities_section (
 -- ====================================================
 
 CREATE TABLE IF NOT EXISTS session_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- HOMEPAGE "JOIN AMRUT VARG" SECTION
+-- The three registration routes (student, organiser, leader) with their
+-- required-detail chips. Same single-row draft/published shape as the other
+-- homepage sections.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS join_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- DISTRICT DIRECTORY PAGE WORDING
+-- The heading, filter labels, role badges and links around the directory. The
+-- contact cards themselves live in district_contacts and are not duplicated
+-- here. Same single-row draft/published shape as the homepage sections.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS directory_section (
+  id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  published_at TIMESTAMPTZ,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by   INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- ====================================================
+-- FOOTER OFFICIAL LINKS AND SOCIAL PROFILES
+-- One record for the two places the same official links appear: the footer
+-- column and the contact desk tab. Social profiles live here too, so the
+-- whole footer is edited in one screen. Same single-row draft/published
+-- shape as the homepage sections.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS footer_section (
   id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   draft        JSONB NOT NULL DEFAULT '{}'::jsonb,
   published    JSONB NOT NULL DEFAULT '{}'::jsonb,

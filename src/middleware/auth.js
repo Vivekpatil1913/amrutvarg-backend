@@ -13,7 +13,7 @@ export async function attachUser(req, res, next) {
 
     const payload = jwt.verify(token, env.jwt.secret);
     const session = await queryOne(
-      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.name, u.role, u.is_active
+      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.name, u.role, u.avatar_url, u.is_active
        FROM admin_sessions s
        JOIN admin_users u ON u.id = s.user_id
        WHERE s.id = $1 AND s.revoked_at IS NULL`,
@@ -35,6 +35,7 @@ export async function attachUser(req, res, next) {
       email: session.email,
       name: session.name,
       role: session.role,
+      avatarUrl: session.avatar_url,
     };
   } catch {
     // Invalid token — just skip

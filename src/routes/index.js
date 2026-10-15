@@ -13,6 +13,9 @@ import heroRoutes from "../modules/hero/hero.routes.js";
 import aboutRoutes from "../modules/about/about.routes.js";
 import activitiesRoutes from "../modules/activities/activities.routes.js";
 import sessionRoutes from "../modules/session/session.routes.js";
+import joinRoutes from "../modules/join/join.routes.js";
+import directoryRoutes from "../modules/directory/directory.routes.js";
+import footerRoutes from "../modules/footer/footer.routes.js";
 import yashogathaRoutes from "../modules/yashogatha/yashogatha.routes.js";
 import formConfigRoutes from "../modules/forms/forms.routes.js";
 import { masterRouters } from "../modules/masters/masters.routes.js";
@@ -63,6 +66,9 @@ export function buildRouter() {
   router.use("/public/about", publicOnly(aboutRoutes));
   router.use("/public/activities", publicOnly(activitiesRoutes));
   router.use("/public/session", publicOnly(sessionRoutes));
+  router.use("/public/join", publicOnly(joinRoutes));
+  router.use("/public/directory", publicOnly(directoryRoutes));
+  router.use("/public/footer", publicOnly(footerRoutes));
   router.use("/public/yashogatha", publicOnly(yashogathaRoutes));
   router.use("/public/forms", publicOnly(formConfigRoutes));
 
@@ -88,6 +94,9 @@ export function buildRouter() {
   router.use("/admin/about", aboutRoutes);
   router.use("/admin/activities", activitiesRoutes);
   router.use("/admin/session", sessionRoutes);
+  router.use("/admin/join", joinRoutes);
+  router.use("/admin/directory", directoryRoutes);
+  router.use("/admin/footer", footerRoutes);
   router.use("/admin/yashogatha", yashogathaRoutes);
   router.use("/admin/forms", formConfigRoutes);
   for (const key of MASTER_KEYS) {
