@@ -429,3 +429,256 @@ ALTER TABLE stories ADD COLUMN IF NOT EXISTS image_url TEXT;
 -- story could never be recreated at the same address.
 ALTER TABLE stories DROP CONSTRAINT IF EXISTS stories_slug_key;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_stories_slug ON stories (slug) WHERE deleted_at IS NULL;
+
+-- ====================================================
+-- VIDEOS AND REELS
+-- One row per piece of video content. `content_type` separates a full video
+-- from a short vertical reel; `source_type` decides which of the two source
+-- columns carries the content.
+--
+--   source_type = 'upload' -> media_id / media_url point at the stored file
+--   source_type = 'url'    -> external_url holds the provider address
+--
+-- `provider` is derived on save (youtube | vimeo | instagram | file | link) so
+-- the public page knows how to render a row without re-parsing every URL.
+-- Nothing is embedded straight from external_url: the embed address is rebuilt
+-- from the parsed ID at render time (src/lib/mediaUrl.js).
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS videos (
+  id            SERIAL PRIMARY KEY,
+  title_mr      TEXT NOT NULL,
+  title_en      TEXT NOT NULL DEFAULT '',
+  desc_mr       TEXT NOT NULL DEFAULT '',
+  desc_en       TEXT NOT NULL DEFAULT '',
+  content_type  TEXT NOT NULL DEFAULT 'video',   -- video | reel
+  source_type   TEXT NOT NULL DEFAULT 'url',     -- upload | url
+  media_id      INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+  media_url     TEXT NOT NULL DEFAULT '',
+  external_url  TEXT NOT NULL DEFAULT '',
+  provider      TEXT NOT NULL DEFAULT '',
+  thumbnail_id  INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+  thumbnail_url TEXT NOT NULL DEFAULT '',
+  category      TEXT NOT NULL DEFAULT 'general',
+  duration_seconds INTEGER,
+  published     BOOLEAN NOT NULL DEFAULT FALSE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT videos_content_type_chk CHECK (content_type IN ('video', 'reel')),
+  CONSTRAINT videos_source_type_chk  CHECK (source_type IN ('upload', 'url')),
+  -- A row must actually carry its content: the public page has nothing to
+  -- render otherwise, and the check is cheaper than discovering it live.
+  CONSTRAINT videos_source_present_chk CHECK (
+    (source_type = 'upload' AND media_url <> '') OR
+    (source_type = 'url'    AND external_url <> '')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_videos_type ON videos(content_type, published, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_videos_order ON videos(display_order, created_at DESC);
+
+-- ====================================================
+-- PODCAST EPISODES
+-- Same source_type split as videos. `duration_seconds` is filled in by the
+-- browser when it can read the file's metadata and typed in otherwise, so it
+-- is nullable rather than zero — "unknown" and "no length" are not the same.
+-- `publish_date` is editorial (the date shown on the episode); `published` is
+-- what decides whether the public API returns it at all.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS podcasts (
+  id            SERIAL PRIMARY KEY,
+  title_mr      TEXT NOT NULL,
+  title_en      TEXT NOT NULL DEFAULT '',
+  desc_mr       TEXT NOT NULL DEFAULT '',
+  desc_en       TEXT NOT NULL DEFAULT '',
+  source_type   TEXT NOT NULL DEFAULT 'url',     -- upload | url
+  media_id      INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+  media_url     TEXT NOT NULL DEFAULT '',
+  external_url  TEXT NOT NULL DEFAULT '',
+  provider      TEXT NOT NULL DEFAULT '',
+  cover_id      INTEGER REFERENCES media_assets(id) ON DELETE SET NULL,
+  cover_url     TEXT NOT NULL DEFAULT '',
+  category      TEXT NOT NULL DEFAULT 'general',
+  duration_seconds INTEGER,
+  publish_date  DATE,
+  published     BOOLEAN NOT NULL DEFAULT FALSE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT podcasts_source_type_chk CHECK (source_type IN ('upload', 'url')),
+  CONSTRAINT podcasts_source_present_chk CHECK (
+    (source_type = 'upload' AND media_url <> '') OR
+    (source_type = 'url'    AND external_url <> '')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_podcasts_published ON podcasts(published, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_podcasts_date ON podcasts(publish_date DESC NULLS LAST);
+
+-- ====================================================
+-- SCHOOL / VARG RESOURCE LINK
+-- An optional introduction video or website for the school a varg is held at.
+-- Nullable and added in place: existing rows keep their data and read back as
+-- NULL, which the site treats the same as "no link".
+-- ====================================================
+
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS resource_url TEXT;
+
+-- ====================================================
+-- SCHOOL LOCATION: STABLE IDS AND VILLAGE
+-- A varg record is a school, and it has always stored its geography as NAMES
+-- (district_mr, taluka). Those columns stay — the public site, the district
+-- contacts and the registration forms all read them, and rewriting that
+-- contract would be a far larger change than this needs to be.
+--
+-- What is added is the ID alongside each name. An id is what makes the
+-- district -> taluka relationship checkable with certainty: a name can be
+-- retyped, renamed or duplicated, while `talukas.district_id` either matches
+-- the chosen district or it does not. The names remain the display value and
+-- are derived FROM the ids whenever ids are supplied, so the two can never
+-- drift apart.
+--
+-- Both are nullable: a historic record whose district was typed in before
+-- these masters existed keeps working, and a district whose talukas have not
+-- been entered yet can still be saved.
+-- ====================================================
+
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id) ON DELETE SET NULL;
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS taluka_id   INTEGER REFERENCES talukas(id)   ON DELETE SET NULL;
+
+-- Village name. Free text for now: there is no village master in this
+-- database, and inventing one would be worse than leaving the field open.
+-- Nullable, so every existing row reads back as "no village" unchanged.
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS village TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_vargs_district_id ON vargs(district_id);
+CREATE INDEX IF NOT EXISTS idx_vargs_taluka_id ON vargs(taluka_id);
+
+-- Backfill the ids from the names already stored, matching the current name in
+-- either language and any former spelling. Only rows whose id is still NULL
+-- are touched, so this is safe to re-run and never overwrites a value an
+-- administrator has since set. A name that matches nothing is left NULL rather
+-- than guessed at.
+UPDATE vargs v
+   SET district_id = d.id
+  FROM districts d
+ WHERE v.district_id IS NULL
+   AND d.deleted_at IS NULL
+   AND (
+     LOWER(d.name_mr) = LOWER(TRIM(v.district_mr))
+     OR (d.name_en <> '' AND LOWER(d.name_en) = LOWER(TRIM(v.district_mr)))
+     OR TRIM(v.district_mr) = ANY(d.former_names)
+   );
+
+-- Scoped to the district just resolved, so a taluka name that exists in two
+-- districts cannot be attached to the wrong one.
+UPDATE vargs v
+   SET taluka_id = t.id
+  FROM talukas t
+ WHERE v.taluka_id IS NULL
+   AND v.district_id IS NOT NULL
+   AND t.district_id = v.district_id
+   AND t.deleted_at IS NULL
+   AND TRIM(COALESCE(v.taluka, '')) <> ''
+   AND (
+     LOWER(t.name_mr) = LOWER(TRIM(v.taluka))
+     OR (t.name_en <> '' AND LOWER(t.name_en) = LOWER(TRIM(v.taluka)))
+     OR TRIM(v.taluka) = ANY(t.former_names)
+   );
+
+-- ====================================================
+-- DISTRICT OFFICES
+-- One office per district, keyed to the district master by id rather than by
+-- name — the same decision as vargs.district_id, and for the same reason: a
+-- name can be renamed or retyped, an id cannot.
+--
+-- Every detail column is optional and defaults to empty. This table exists so
+-- verified office information CAN be recorded; it ships with none, and the
+-- public page renders only the fields that have actually been filled in. A
+-- blank row is therefore indistinguishable from no row, which is the correct
+-- behaviour when nothing has been confirmed.
+--
+-- The UNIQUE index is what stops the same office details being entered twice
+-- against one district.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS district_offices (
+  id              SERIAL PRIMARY KEY,
+  district_id     INTEGER NOT NULL REFERENCES districts(id) ON DELETE RESTRICT,
+  office_name_mr  TEXT NOT NULL DEFAULT '',
+  office_name_en  TEXT NOT NULL DEFAULT '',
+  collector_name  TEXT NOT NULL DEFAULT '',
+  collector_designation TEXT NOT NULL DEFAULT '',
+  address         TEXT NOT NULL DEFAULT '',
+  phone           TEXT NOT NULL DEFAULT '',
+  email           TEXT NOT NULL DEFAULT '',
+  hours           TEXT NOT NULL DEFAULT '',
+  website_url     TEXT NOT NULL DEFAULT '',
+  map_url         TEXT NOT NULL DEFAULT '',
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  deleted_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by      INTEGER REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- One live office per district. Scoped to live rows so a soft-deleted office
+-- does not reserve its district for ever.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_district_offices_district
+  ON district_offices (district_id) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_district_offices_active
+  ON district_offices (is_active, deleted_at);
+
+-- ====================================================
+-- VIDEO -> SCHOOL LINK
+-- A success story video is usually about one school. Recording which one lets
+-- the Yashogatha section name it under the title without the editor retyping
+-- it, and keeps the name correct when the school record is corrected.
+--
+-- Nullable: most videos are about the programme rather than a single school.
+-- ON DELETE SET NULL, because removing a varg must not take its video with it.
+-- ====================================================
+
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS varg_id INTEGER REFERENCES vargs(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_videos_varg ON videos(varg_id);
+
+-- ====================================================
+-- ANNOUNCEMENT EVENT DETAILS
+-- An AMRUT training or event is announced through the same notice as anything
+-- else; what it needs extra is where and when to turn up. Every column is
+-- optional, so a plain notice is entirely unchanged — a circular has no venue.
+--
+-- The existing `date` column doubles as the EVENT date. A second date field
+-- would only raise the question of which one the website shows, and the
+-- weekday is derived from it at render time rather than stored: a stored day
+-- can contradict its own date, a derived one cannot.
+--
+-- `event_time` is text, not TIME: a session runs "सकाळी १० ते दुपारी ४", which
+-- a clock column cannot hold. Venue and location are single-language free
+-- text, as vargs.school_name and vargs.taluka already are; the notes are
+-- bilingual, as every other prose field on this record is.
+-- ====================================================
+
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS event_time     TEXT NOT NULL DEFAULT '';
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS venue          TEXT NOT NULL DEFAULT '';
+
+-- The event location is the district and taluka masters rather than free text,
+-- so a notice cannot name a place the programme does not recognise. Names and
+-- ids both, exactly as vargs does it: the id is what makes the
+-- district -> taluka pairing checkable, the name is what gets displayed.
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS district    TEXT NOT NULL DEFAULT '';
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id) ON DELETE SET NULL;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS taluka      TEXT NOT NULL DEFAULT '';
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS taluka_id   INTEGER REFERENCES talukas(id)   ON DELETE SET NULL;
+
+-- Added minutes earlier in this same change and never populated; the district
+-- and taluka columns above replace it.
+ALTER TABLE announcements DROP COLUMN IF EXISTS event_location;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS notes_mr       TEXT NOT NULL DEFAULT '';
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS notes_en       TEXT NOT NULL DEFAULT '';

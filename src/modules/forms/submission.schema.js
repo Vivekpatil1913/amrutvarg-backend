@@ -96,11 +96,24 @@ export const participantSchema = z.union([schoolParticipant, collegeParticipant]
 
 // ── Organizer ────────────────────────────────────────────────────────────────
 
+// The organiser is an institution, so the record names three things: the body
+// itself, whoever is running the varg, and whoever answers the phone. Those
+// are often different people, which is why the name is not one field.
+//
+// `place` is deliberately absent. It used to be required and meant a town;
+// what the form now asks for is the organisation, which is a different fact
+// rather than a reworded one. Submissions made before this keep their stored
+// `place` — the column is JSONB and nothing rewrites it — and the admin still
+// has a label for it so those records read correctly.
 export const organizerSchema = z.object({
-  name: required("Name"),
-  place: required("Place"),
-  mobile: mobile("Mobile"),
+  name: required("Organizer name"),
+  organisation: required("Organization / Institution", 300),
+  // Optional: a single school or housing society has no branch to give, and
+  // forcing one would mean inventing it.
+  branch: optionalText(255),
+  contactPerson: required("Contact person name"),
   designation: required("Designation"),
+  mobile: mobile("Mobile"),
   district: required("District"),
 });
 

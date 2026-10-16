@@ -60,6 +60,11 @@ export const env = {
   upload: {
     dir: optional("UPLOAD_DIR", "uploads"),
     maxMb: parseInt(optional("MAX_FILE_SIZE_MB", "10"), 10),
+    // Video and audio are sized separately from images: a ten-megabyte ceiling
+    // is generous for a photograph and useless for an episode. Both are server
+    // limits, so raising them does not need a front-end change.
+    maxVideoMb: parseInt(optional("MAX_VIDEO_SIZE_MB", "100"), 10),
+    maxAudioMb: parseInt(optional("MAX_AUDIO_SIZE_MB", "25"), 10),
   },
 
   seed: {

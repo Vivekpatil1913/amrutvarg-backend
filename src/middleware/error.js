@@ -31,6 +31,30 @@ export function errorHandler(err, req, res, _next) {
     });
   }
 
+  // PostgreSQL check-constraint violation. The request schemas are meant to
+  // catch these first; reaching here means a rule exists only in the database,
+  // which is a client error rather than a server fault — a 500 would send the
+  // caller looking in the wrong place.
+  if (err.code === "23514") {
+    return res.status(422).json({
+      error: { code: "VALIDATION_ERROR", message: "That combination of values is not allowed.", details: [] },
+    });
+  }
+
+  // Foreign-key violation: the request named a related record that does not
+  // exist. Routes that can produce one should check it first and say WHICH
+  // field is wrong; this is the net under them, so a bad id is reported as the
+  // client error it is rather than as a server fault.
+  if (err.code === "23503") {
+    return res.status(422).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "That record refers to something that does not exist.",
+        details: [],
+      },
+    });
+  }
+
   console.error("Unhandled error:", err);
   return res.status(500).json({
     error: {
