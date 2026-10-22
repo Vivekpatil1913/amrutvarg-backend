@@ -57,11 +57,15 @@ const collegeParticipant = {
   declarationAccepted: true,
 };
 
+// The organiser is an institution, so three names appear: the body, whoever
+// runs the varg, and whoever answers the phone.
 const organizer = {
+  organisation: "श्री. एकात्म विद्यालय",
+  branch: "कोथरूड शाखा",
   name: "संजय कुलकर्णी",
-  place: "पुणे",
-  mobile: "9876543210",
+  contactPerson: "मीना देशपांडे",
   designation: "मुख्याध्यापक",
+  mobile: "9876543210",
   district: "पुणे",
 };
 
@@ -205,4 +209,53 @@ test("unknown public submission fields are stripped from parsed data", () => {
   const parsed = participantSchema.parse({ ...collegeParticipant, admin: true, deleted_at: "now" });
   assert.equal("admin" in parsed, false);
   assert.equal("deleted_at" in parsed, false);
+});
+
+// ── Organizer: the institution-shaped record ────────────────────────────────
+//
+// The form asks for three names because they are three different things: the
+// organisation, whoever runs the varg, and whoever answers the phone. Only the
+// branch is optional — a single school or housing society has none to give.
+
+test("every organizer field except the branch is required", () => {
+  for (const key of ["organisation", "name", "contactPerson", "designation", "district"]) {
+    const without = { ...organizer, [key]: "" };
+    const r = organizerSchema.safeParse(without);
+    assert.equal(r.success, false, `${key} should be required`);
+    assert.ok(
+      r.error.issues.some((i) => i.path[0] === key),
+      `the error should name ${key}`
+    );
+    // Whitespace is not a value.
+    assert.equal(organizerSchema.safeParse({ ...organizer, [key]: "   " }).success, false, key);
+  }
+});
+
+test("the branch is optional and may be omitted entirely", () => {
+  assert.equal(organizerSchema.safeParse({ ...organizer, branch: "" }).success, true);
+  const without = { ...organizer };
+  delete without.branch;
+  assert.equal(organizerSchema.safeParse(without).success, true);
+});
+
+test("the organiser and the contact person are separate fields", () => {
+  const r = organizerSchema.safeParse(organizer);
+  assert.equal(r.success, true);
+  assert.equal(r.data.name, "संजय कुलकर्णी");
+  assert.equal(r.data.contactPerson, "मीना देशपांडे");
+  assert.notEqual(r.data.name, r.data.contactPerson);
+});
+
+test("the retired `place` field is neither required nor stored", () => {
+  // Submissions made before the form changed keep their stored `place`; the
+  // schema simply no longer asks for one, and ignores it if sent.
+  const r = organizerSchema.safeParse({ ...organizer, place: "पुणे" });
+  assert.equal(r.success, true);
+  assert.ok(!("place" in r.data), "an unexpected key should be stripped, not kept");
+});
+
+test("the organizer mobile is held to the same rule as every other form", () => {
+  assert.equal(organizerSchema.safeParse({ ...organizer, mobile: "12345" }).success, false);
+  assert.equal(organizerSchema.safeParse({ ...organizer, mobile: "1234567890" }).success, false);
+  assert.equal(organizerSchema.safeParse({ ...organizer, mobile: "9123456789" }).success, true);
 });

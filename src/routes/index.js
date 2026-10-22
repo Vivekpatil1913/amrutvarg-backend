@@ -8,6 +8,9 @@ import contactsRoutes from "../modules/contacts/contacts.routes.js";
 import settingsRoutes from "../modules/settings/settings.routes.js";
 import submissionsRoutes from "../modules/submissions/submissions.routes.js";
 import mediaRoutes from "../modules/media/media.routes.js";
+import videosRoutes from "../modules/videos/videos.routes.js";
+import podcastsRoutes from "../modules/podcasts/podcasts.routes.js";
+import officesRoutes from "../modules/offices/offices.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import heroRoutes from "../modules/hero/hero.routes.js";
 import aboutRoutes from "../modules/about/about.routes.js";
@@ -71,6 +74,9 @@ export function buildRouter() {
   router.use("/public/footer", publicOnly(footerRoutes));
   router.use("/public/yashogatha", publicOnly(yashogathaRoutes));
   router.use("/public/forms", publicOnly(formConfigRoutes));
+  router.use("/public/videos", publicOnly(videosRoutes));
+  router.use("/public/podcasts", publicOnly(podcastsRoutes));
+  router.use("/public/offices", publicOnly(officesRoutes));
 
   // Geographical masters: the same router serves the site's dropdowns and the
   // admin CRUD screens, mounted under both prefixes.
@@ -99,6 +105,9 @@ export function buildRouter() {
   router.use("/admin/footer", footerRoutes);
   router.use("/admin/yashogatha", yashogathaRoutes);
   router.use("/admin/forms", formConfigRoutes);
+  router.use("/admin/videos", videosRoutes);
+  router.use("/admin/podcasts", podcastsRoutes);
+  router.use("/admin/offices", officesRoutes);
   for (const key of MASTER_KEYS) {
     router.use(`/admin/masters/${key}`, masterRouters[key]);
   }
