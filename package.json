@@ -7,9 +7,13 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "start:prod": "NODE_ENV=production node src/server.js",
     "db:migrate": "node migrations/migrate.js",
     "db:seed": "node seeds/seed.js",
     "db:setup": "node migrations/migrate.js && node seeds/seed.js",
+    "db:migrate:prod": "NODE_ENV=production node migrations/migrate.js",
+    "db:seed:prod": "NODE_ENV=production node seeds/seed.js",
+    "db:setup:prod": "NODE_ENV=production node migrations/migrate.js && NODE_ENV=production node seeds/seed.js",
     "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {

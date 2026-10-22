@@ -1,24 +1,6 @@
-import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 import pg from "pg";
+import "../src/config/loadEnv.js";
 import bcrypt from "bcryptjs";
-
-const __dir = dirname(fileURLToPath(import.meta.url));
-
-// Load .env
-try {
-  const e = readFileSync(resolve(__dir, "../.env"), "utf-8");
-  for (const line of e.split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq === -1) continue;
-    const k = t.slice(0, eq).trim();
-    const v = t.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
-    if (!(k in process.env)) process.env[k] = v;
-  }
-} catch {}
 
 const pool = new pg.Pool({
   host: process.env.PGHOST || "localhost",

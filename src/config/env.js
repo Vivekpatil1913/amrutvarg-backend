@@ -1,21 +1,4 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
-
-// Load .env manually (supports ESM)
-try {
-  const envFile = readFileSync(resolve(process.cwd(), ".env"), "utf-8");
-  for (const line of envFile.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
-    if (!(key in process.env)) process.env[key] = val;
-  }
-} catch {
-  // .env not found; rely on actual env vars
-}
+import "./loadEnv.js";
 
 function required(name) {
   const val = process.env[name];
@@ -68,3 +51,13 @@ export const env = {
     adminName: optional("SEED_ADMIN_NAME", "Admin"),
   },
 };
+
+// Refuse to start in production with missing or default secrets.
+if (env.nodeEnv === "production") {
+  const problems = [];
+  if (!process.env.JWT_SECRET || env.jwt.secret.length < 32 || /change_in_production|dev_secret/.test(env.jwt.secret))
+    problems.push("JWT_SECRET must be set to a random value of at least 32 characters");
+  if (!process.env.PGPASSWORD || env.db.password === "postgres123")
+    problems.push("PGPASSWORD must be set to the production database password");
+  if (problems.length) throw new Error(`Invalid production config:\n  - ${problems.join("\n  - ")}`);
+}
