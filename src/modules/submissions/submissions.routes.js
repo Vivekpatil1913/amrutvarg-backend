@@ -215,7 +215,7 @@ router.put("/:id/status", requireAdmin, asyncHandler(async (req, res) => {
 
   const [row] = await query(
     `UPDATE form_submissions SET status = $1, notes = COALESCE($2, notes), updated_at = NOW()
-     WHERE id = $3 RETURNING *`,
+     WHERE id = $3 AND deleted_at IS NULL RETURNING *`,
     [status, notes ?? null, parsedId.data]
   );
   if (!row) throw notFound("Submission");

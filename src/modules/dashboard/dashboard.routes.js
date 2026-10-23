@@ -11,20 +11,22 @@ router.get("/", requireAdmin, asyncHandler(async (req, res) => {
     query(`SELECT COUNT(*) AS count FROM stories WHERE deleted_at IS NULL AND published = TRUE`),
     query(`SELECT COUNT(*) AS count FROM vargs WHERE deleted_at IS NULL AND is_active = TRUE`),
     query(`SELECT COUNT(*) AS count FROM district_contacts WHERE deleted_at IS NULL`),
-    query(`SELECT COUNT(*) AS count FROM form_submissions WHERE status = 'new'`),
-    query(`SELECT COUNT(*) AS count FROM form_submissions`),
+    query(`SELECT COUNT(*) AS count FROM form_submissions WHERE deleted_at IS NULL AND status = 'new'`),
+    query(`SELECT COUNT(*) AS count FROM form_submissions WHERE deleted_at IS NULL`),
     query(
       `SELECT TO_CHAR(date_trunc('month', submitted_at), 'YYYY-MM') AS month,
               COUNT(*)::int AS total,
               COUNT(*) FILTER (WHERE status = 'new')::int AS new
        FROM form_submissions
-       WHERE submitted_at >= date_trunc('month', NOW()) - INTERVAL '11 months'
+       WHERE deleted_at IS NULL
+         AND submitted_at >= date_trunc('month', NOW()) - INTERVAL '11 months'
        GROUP BY date_trunc('month', submitted_at)
        ORDER BY date_trunc('month', submitted_at)`
     ),
     query(
       `SELECT status, COUNT(*)::int AS total
        FROM form_submissions
+       WHERE deleted_at IS NULL
        GROUP BY status
        ORDER BY status`
     ),
@@ -35,6 +37,7 @@ router.get("/", requireAdmin, asyncHandler(async (req, res) => {
        LEFT JOIN form_submissions submissions
          ON submissions.submitted_at >= days.day
         AND submissions.submitted_at < days.day + INTERVAL '1 day'
+        AND submissions.deleted_at IS NULL
        GROUP BY days.day
        ORDER BY days.day`
     ),
