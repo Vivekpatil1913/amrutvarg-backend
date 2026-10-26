@@ -14,6 +14,8 @@
     "db:migrate:prod": "NODE_ENV=production node migrations/migrate.js",
     "db:seed:prod": "NODE_ENV=production node seeds/seed.js",
     "db:setup:prod": "NODE_ENV=production node migrations/migrate.js && NODE_ENV=production node seeds/seed.js",
+    "db:update:client": "node migrations/apply_content_update.js",
+    "db:update:client:prod": "NODE_ENV=production node migrations/apply_content_update.js",
     "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
