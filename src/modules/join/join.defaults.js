@@ -22,7 +22,7 @@ export const DEFAULT_JOIN = {
     badge_en: "Registration",
     title_mr: "अमृत वर्गात सहभागी व्हा",
     title_en: "Join Amrut Varg",
-    lead_mr: "विद्यार्थ्याची कार्यरत अमृत वर्गात नोंदणी करा, संस्थेच्या वतीने आयोजक म्हणून नोंदणी करा किंवा अमृत वर्ग प्रमुख म्हणून नोंदणी करा.",
+    lead_mr: "विद्यार्थ्याची सध्या सुरु असलेल्या अमृत वर्गात नोंदणी करा, संस्थेच्या वतीने आयोजक म्हणून नोंदणी करा किंवा अमृत वर्ग प्रमुख म्हणून नोंदणी करा.",
     lead_en: "Register a student in an active Amrut Varg, register as an organizer on behalf of an organization, or register as an Amrut Varg Leader.",
     needs_label_mr: "आवश्यक माहिती",
     needs_label_en: "Details you'll need",
@@ -36,7 +36,7 @@ export const DEFAULT_JOIN = {
       action_icon: "graduation",
       title_mr: "विद्यार्थी नोंदणी",
       title_en: "Student Registration",
-      desc_mr: "अमृत वर्ग उपक्रमांमध्ये सहभागी होणाऱ्या विद्यार्थ्यासाठी ही नोंदणी आहे. आपल्या जवळचा कार्यरत अमृत वर्ग निवडा आणि त्या वर्गासाठी विद्यार्थ्याची माहिती भरा.",
+      desc_mr: "अमृत वर्ग उपक्रमांमध्ये सहभागी होणाऱ्या विद्यार्थ्यासाठी ही नोंदणी आहे. आपल्या जवळचा सध्या सुरु असलेला अमृत वर्ग निवडा आणि त्या वर्गासाठी विद्यार्थ्याची माहिती भरा.",
       desc_en: "For the student who will take part in Amrut Varg activities. Choose an active Amrut Varg near you and fill in the student's details for that Varg.",
       needs: [
         { id: "need-name", label_mr: "पूर्ण नाव", label_en: "Full Name" },

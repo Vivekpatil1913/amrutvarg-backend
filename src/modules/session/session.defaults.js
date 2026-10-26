@@ -43,7 +43,7 @@ export const DEFAULT_SESSION = {
     },
     {
       id: "ses-command", min: 10,
-      title_mr: "आज्ञा अभ्यास", title_en: "Command Practice",
+      title_mr: "आज्ञा सराव", title_en: "Command Practice",
       desc_mr: "", desc_en: "",
       enabled: true,
     },

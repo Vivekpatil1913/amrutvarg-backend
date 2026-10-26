@@ -82,7 +82,7 @@ async function seedStories() {
     {
       slug: "discovering-my-own-voice",
       category: "confidence",
-      title_mr: "माझा स्वर शोधताना",
+      title_mr: "स्वबोध होताना...",
       title_en: "Discovering My Own Voice",
       short_mr: "अमृत वर्गात मला माझ्यातील आत्मविश्वास सापडला.",
       short_en: "In Amrut Varg, I found the confidence I never knew I had.",
@@ -112,9 +112,9 @@ async function seedStories() {
     {
       slug: "leading-the-surya-namaskar",
       category: "leadership",
-      title_mr: "सूर्यनमस्कार आघाडीवरून",
+      title_mr: "सूर्यनमस्कार अनुभवताना...",
       title_en: "Leading the Surya Namaskar",
-      short_mr: "आघाडीवरून मार्गदर्शन करणे हा अनुभव अविस्मरणीय होता.",
+      short_mr: "सूर्यनमस्कार करताना येणारा अविस्मरणीय अनुभव",
       short_en: "Leading from the front was an unforgettable experience.",
       content: {
         mr: { intro: "त्या दिवशी माझ्याकडे आघाडी होती..." },

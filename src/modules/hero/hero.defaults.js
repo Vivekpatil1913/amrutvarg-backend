@@ -51,10 +51,10 @@ export const DEFAULT_HERO = {
     eyebrow_en: "Amrut Varg is an autonomous institution under Maharashtra Government",
     title_mr: "अमृत वर्ग",
     title_en: "Amrut Varg",
-    tagline_mr: "भविष्यातील नेतृत्व घडवणारा संस्कारमय उपक्रम",
-    tagline_en: "A formative initiative shaping future leadership.",
-    desc_mr: "महाराष्ट्र संशोधन, उन्नती व प्रशिक्षण प्रबोधिनीचा शैक्षणिक उपक्रम. सर्व वयोगटातील किशोरवयीन विद्यार्थ्यांसाठी रचलेला, दररोज सुमारे एक तास चालणारा शिस्तबद्ध वर्ग.",
-    desc_en: "An academic initiative by the Academy of Maharashtra Research, Upliftment and Training — a disciplined approximately one-hour daily class designed for adolescent students across all age groups.",
+    tagline_mr: "भविष्यातील सजग नेतृत्व घडवणारा नाविन्यपूर्ण उपक्रम...",
+    tagline_en: "An innovative initiative shaping conscious future leadership...",
+    desc_mr: "महाराष्ट्र संशोधन, उन्नती व प्रशिक्षण प्रबोधिनीचा एक अनोखा उपक्रम. सर्व किशोरवयीन विद्यार्थ्यांसाठी उपयुक्त. दररोज सुमारे एक तास विद्यार्थ्यांसाठी उद्बोधक पण तितकाच रंजक वर्ग..हसत-खेळत अनुभवा आणि जाणून घ्या तुमच्यासाठी उपयुक्त अशा काही नवीन गोष्टी!!",
+    desc_en: "A unique initiative by the Academy of Maharashtra Research, Upliftment and Training. Useful for all adolescent students. An enlightening yet equally engaging class of about one hour every day for students... Experience with fun and games, and learn some new things useful for you!!",
     eyebrow_dot: true,
   },
   images: {
@@ -116,7 +116,7 @@ export const DEFAULT_HERO = {
     },
     {
       id: "stat-vargs",
-      label_mr: "कार्यरत अमृत वर्ग",
+      label_mr: "सध्या सुरु असलेले अमृत वर्ग",
       label_en: "Active Amrut Vargs",
       value_mr: "",
       value_en: "",
@@ -136,9 +136,9 @@ export const DEFAULT_HERO = {
   quicknav: [
     {
       id: "quick-vargs",
-      title_mr: "कार्यरत अमृत वर्ग",
+      title_mr: "सध्या सुरु असलेले अमृत वर्ग",
       title_en: "Active Amrut Vargs",
-      desc_mr: "जवळचा मंजूर अमृत वर्ग शोधा",
+      desc_mr: "जवळचा सुरु असलेला अमृत वर्ग शोधा",
       desc_en: "Find an approved Amrut Varg near you",
       icon: "search",
       target: "#vargs",

@@ -20,15 +20,15 @@ export const DEFAULT_YASHOGATHA = {
     read_more_en: "Read more",
     view_all_mr: "सर्व यशोगाथा पहा",
     view_all_en: "See all stories",
-    sample_tag_mr: "नमुना कथा",
-    sample_tag_en: "Sample story",
+    sample_tag_mr: "प्रत्यक्ष अनुभव",
+    sample_tag_en: "Student Experience",
     no_stories_mr: "सध्या कोणतीही यशोगाथा उपलब्ध नाही.",
     no_stories_en: "No stories are available yet.",
   },
   // Shown above the body on a story page. Empty hides the notice entirely.
   detail_note: {
-    text_mr: "ही उदाहरणादाखल दिलेली नमुना कथा आहे; ती कोणत्याही विशिष्ट विद्यार्थ्याचा प्रत्यक्ष अनुभव नाही.",
-    text_en: "This is an illustrative sample story; it is not the actual experience of any particular student.",
+    text_mr: "अमृत वर्गातील विद्यार्थ्यांचे प्रत्यक्ष अनुभव.",
+    text_en: "Actual experiences of students participating in Amrut Varg.",
     enabled: true,
   },
   homepage: {

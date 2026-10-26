@@ -55,7 +55,7 @@ export const DEFAULT_FOOTER = {
       icon: "globe",
       title_mr: "अमृत वर्ग पोर्टल",
       title_en: "Amrut Varg Portal",
-      desc_mr: "नोंदणी व कार्यरत अमृत वर्गांची अद्ययावत यादी.",
+      desc_mr: "नोंदणी व सध्या सुरु असलेल्या अमृत वर्गांची अद्ययावत यादी.",
       desc_en: "Registration and the up-to-date list of active Amrut Vargs.",
       enabled: true,
     },

@@ -1,4 +1,4 @@
-// Seed configuration for the "कार्यरत अमृत वर्ग" section.
+// Seed configuration for the "सध्या सुरु असलेले अमृत वर्ग" section.
 //
 // This is the wording and layout around the listing — heading, statistics
 // strip, the division atlas, the search bar and the card labels. The vargs
@@ -37,12 +37,12 @@ export const DEFAULT_VARGS_SECTION = {
   text: {
     badge_mr: "मंजूर वर्ग",
     badge_en: "Approved classes",
-    title_mr: "कार्यरत अमृत वर्ग",
+    title_mr: "सध्या सुरु असलेले अमृत वर्ग",
     title_en: "Active Amrut Vargs",
     // {count} is replaced with the number of listed vargs.
-    lead_mr: 'सध्या {count} कार्यरत अमृत वर्ग उपलब्ध आहेत. सहभागी होण्यासाठी आपल्या जवळचा वर्ग शोधा आणि "नोंदणी करा" बटणावर क्लिक करा.',
+    lead_mr: 'सध्या {count} सुरु असलेले अमृत वर्ग उपलब्ध आहेत. सहभागी होण्यासाठी आपल्या जवळचा वर्ग शोधा आणि "नोंदणी करा" बटणावर क्लिक करा.',
     lead_en: 'There are currently {count} active Amrut Vargs. To take part, find the Varg near you and click "Enroll Now".',
-    empty_mr: "सध्या कोणतेही कार्यरत अमृत वर्ग उपलब्ध नाहीत.",
+    empty_mr: "सध्या सुरु असलेले कोणतेही अमृत वर्ग उपलब्ध नाहीत.",
     empty_en: "No active Amrut Vargs are available yet.",
     eyebrow_dot: true,
   },
@@ -52,7 +52,7 @@ export const DEFAULT_VARGS_SECTION = {
     items: [
       {
         key: "vargs", icon: "building", source: "vargs_count", manual_value: 0,
-        label_mr: "कार्यरत अमृत वर्ग", label_en: "Active Amrut Vargs",
+        label_mr: "सध्या सुरु असलेले अमृत वर्ग", label_en: "Active Amrut Vargs",
       },
       {
         key: "districts", icon: "mapPin", source: "districts_count", manual_value: 0,

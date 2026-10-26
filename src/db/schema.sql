@@ -399,7 +399,7 @@ CREATE TABLE IF NOT EXISTS footer_section (
 -- themselves live in the `stories` table and are not duplicated here.
 -- ====================================================
 
--- Wording and layout for the "कार्यरत अमृत वर्ग" section. The vargs themselves
+-- Wording and layout for the "सध्या सुरु असलेले अमृत वर्ग" section. The vargs themselves
 -- live in `vargs`; the district and vibhag counts are read from the masters.
 CREATE TABLE IF NOT EXISTS vargs_section (
   id           SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
