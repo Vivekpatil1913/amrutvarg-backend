@@ -50,6 +50,29 @@ export const env = {
     maxAudioMb: parseInt(optional("MAX_AUDIO_SIZE_MB", "25"), 10),
   },
 
+  // Where links in notifications, SMS and e-mails point. The admin panel and
+  // the public site are the same origin in the default setup.
+  links: {
+    admin: optional("ADMIN_ORIGIN", "http://localhost:5173"),
+    site: optional("SITE_ORIGIN", "http://localhost:5173"),
+  },
+
+  // Grievance SLA. Hours are measured from submission.
+  sla: {
+    sweepMinutes: parseInt(optional("SLA_SWEEP_MINUTES", "15"), 10),
+    reminderHours: parseInt(optional("SLA_REMINDER_HOURS", "24"), 10),
+    criticalHours: parseInt(optional("SLA_CRITICAL_HOURS", "72"), 10),
+  },
+
+  // Outbound SMS and e-mail. Each is a plain JSON webhook so any gateway can
+  // sit behind it; left empty, messages are recorded in message_outbox as
+  // LOGGED instead of being sent.
+  messaging: {
+    smsWebhookUrl: optional("SMS_WEBHOOK_URL", ""),
+    emailWebhookUrl: optional("EMAIL_WEBHOOK_URL", ""),
+    webhookToken: optional("MESSAGING_WEBHOOK_TOKEN", ""),
+  },
+
   seed: {
     adminEmail: optional("SEED_ADMIN_EMAIL", "admin@amrutvarg.local"),
     adminPassword: optional("SEED_ADMIN_PASSWORD", "Admin@1234"),

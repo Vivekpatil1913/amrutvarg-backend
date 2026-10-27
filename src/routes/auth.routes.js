@@ -40,6 +40,8 @@ const publicUser = (user) => ({
   name: user.name,
   role: user.role,
   avatarUrl: user.avatar_url ?? null,
+  vibhagId: user.vibhag_id ?? null,
+  districtId: user.district_id ?? null,
 });
 
 router.post(
@@ -52,7 +54,7 @@ router.post(
     const { email, password } = body.data;
 
     const user = await queryOne(
-      `SELECT id, email, name, role, avatar_url, password_hash, is_active FROM admin_users WHERE email = $1`,
+      `SELECT id, email, name, role, avatar_url, vibhag_id, district_id, password_hash, is_active FROM admin_users WHERE email = $1`,
       [email.toLowerCase()]
     );
 
@@ -119,6 +121,8 @@ router.get(
       name: req.user.name,
       role: req.user.role,
       avatarUrl: req.user.avatarUrl ?? null,
+      vibhagId: req.user.vibhagId ?? null,
+      districtId: req.user.districtId ?? null,
     });
   })
 );
@@ -145,7 +149,7 @@ router.patch(
         `UPDATE admin_users
          SET name = $1, email = $2, avatar_url = COALESCE($3, avatar_url), updated_at = NOW()
          WHERE id = $4
-         RETURNING id, email, name, role, avatar_url`,
+         RETURNING id, email, name, role, avatar_url, vibhag_id, district_id`,
         [parsed.data.name, parsed.data.email, avatarUrl, req.user.id]
       );
     } catch (error) {

@@ -22,6 +22,10 @@ import footerRoutes from "../modules/footer/footer.routes.js";
 import yashogathaRoutes from "../modules/yashogatha/yashogatha.routes.js";
 import formConfigRoutes from "../modules/forms/forms.routes.js";
 import { masterRouters } from "../modules/masters/masters.routes.js";
+import { publicRouter as melawaPublic, adminRouter as melawaAdmin } from "../modules/melawa/melawa.routes.js";
+import { publicRouter as grievancesPublic, adminRouter as grievancesAdmin } from "../modules/grievances/grievances.routes.js";
+import notificationsRoutes from "../modules/notifications/notifications.routes.js";
+import usersRoutes, { auditRouter } from "../modules/users/users.routes.js";
 import { MASTER_KEYS } from "../modules/masters/masters.config.js";
 import { query } from "../db/pool.js";
 import { asyncHandler, success } from "../lib/errors.js";
@@ -87,6 +91,10 @@ export function buildRouter() {
   // Form submissions (public)
   router.use("/forms", submissionsRoutes);
 
+  // Amrut Varg Melawa ticker and public suggestions / complaints
+  router.use("/melawa", melawaPublic);
+  router.use("/grievances", grievancesPublic);
+
   // Admin CMS
   router.use("/admin/announcements", announcementsRoutes);
   router.use("/admin/stories", storiesRoutes);
@@ -111,6 +119,15 @@ export function buildRouter() {
   for (const key of MASTER_KEYS) {
     router.use(`/admin/masters/${key}`, masterRouters[key]);
   }
+
+  // Jurisdiction-scoped operations (all three administrative tiers)
+  router.use("/admin/melawa", melawaAdmin);
+  router.use("/admin/grievances", grievancesAdmin);
+  router.use("/admin/notifications", notificationsRoutes);
+
+  // State level only
+  router.use("/admin/users", usersRoutes);
+  router.use("/admin/audit-logs", auditRouter);
 
   return router;
 }

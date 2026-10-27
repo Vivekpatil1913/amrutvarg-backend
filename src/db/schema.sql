@@ -682,3 +682,209 @@ ALTER TABLE announcements ADD COLUMN IF NOT EXISTS taluka_id   INTEGER REFERENCE
 ALTER TABLE announcements DROP COLUMN IF EXISTS event_location;
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS notes_mr       TEXT NOT NULL DEFAULT '';
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS notes_en       TEXT NOT NULL DEFAULT '';
+
+-- ====================================================
+-- HIERARCHICAL ROLES (RBAC)
+-- Three tiers of administrator, each confined to a slice of the state:
+--
+--   superadmin / admin / state_coordinator -> whole state
+--   division_manager                       -> one vibhag (all its districts)
+--   district_manager                       -> one district
+--
+-- The jurisdiction is held as master ids rather than names, for the same
+-- reason vargs.district_id is: a name can be renamed, an id cannot. A state
+-- role leaves both NULL. `phone` is where SMS alerts are sent.
+-- ====================================================
+
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS vibhag_id   INTEGER REFERENCES vibhags(id)   ON DELETE SET NULL;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id) ON DELETE SET NULL;
+ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS phone       TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_admin_users_scope ON admin_users(role, vibhag_id, district_id);
+
+-- Master audit trail. Written for the actions that change who can do what or
+-- what the public sees; read by state-level administrators only.
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,
+  entity      TEXT NOT NULL,
+  entity_id   TEXT,
+  details     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ip          TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity, entity_id);
+
+-- ====================================================
+-- DIRECT SELF-SERVICE VARG LISTING
+-- An organiser's registration is published the moment it is submitted;
+-- moderation happens afterwards. `status` records the moderation outcome and
+-- `is_active` stays the single switch the public query reads, so the two are
+-- written together:
+--
+--   PUBLISHED   is_active = TRUE   on the public directory
+--   UNPUBLISHED is_active = FALSE  taken down by an administrator
+--   FLAGGED     is_active = FALSE  taken down pending a correction
+--
+-- `source` and `submission_id` say where a row came from, so a self-published
+-- listing can be traced back to the registration that created it.
+-- ====================================================
+
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS status        TEXT NOT NULL DEFAULT 'PUBLISHED';
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS source        TEXT NOT NULL DEFAULT 'admin';
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS submission_id INTEGER REFERENCES form_submissions(id) ON DELETE SET NULL;
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS flag_reason   TEXT NOT NULL DEFAULT '';
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS moderated_by  INTEGER REFERENCES admin_users(id) ON DELETE SET NULL;
+ALTER TABLE vargs ADD COLUMN IF NOT EXISTS moderated_at  TIMESTAMPTZ;
+-- Rows that predate the status column and were switched off by hand read as
+-- unpublished rather than as live-but-hidden.
+UPDATE vargs SET status = 'UNPUBLISHED' WHERE is_active = FALSE AND status = 'PUBLISHED';
+CREATE INDEX IF NOT EXISTS idx_vargs_status ON vargs(status, is_active, deleted_at);
+
+-- ====================================================
+-- AMRUT VARG MELAWA (gathering) ANNOUNCEMENTS
+-- Shown in the flashing ticker above the site header. A state-wide melawa has
+-- no target; a divisional one names a vibhag; a district one names a district
+-- and, derived from it, that district's vibhag, so a division manager's filter
+-- is a single column.
+--
+-- Times are clock times in IST. A melawa stops being "active" once its last
+-- day's end time has passed; the background sweep then archives it.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS melawa_events (
+  id                  SERIAL PRIMARY KEY,
+  title_mr            TEXT NOT NULL,
+  title_en            TEXT NOT NULL DEFAULT '',
+  event_date          DATE NOT NULL,
+  end_date            DATE,
+  start_time          TIME NOT NULL,
+  end_time            TIME NOT NULL,
+  venue_mr            TEXT NOT NULL,
+  venue_en            TEXT NOT NULL DEFAULT '',
+  maps_url            TEXT NOT NULL DEFAULT '',
+  jurisdiction_scope  TEXT NOT NULL DEFAULT 'STATE',
+  target_division_id  INTEGER REFERENCES vibhags(id) ON DELETE RESTRICT,
+  target_district_id  INTEGER REFERENCES districts(id) ON DELETE RESTRICT,
+  highlights_mr       TEXT NOT NULL DEFAULT '',
+  highlights_en       TEXT NOT NULL DEFAULT '',
+  is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+  archived_at         TIMESTAMPTZ,
+  created_by          INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  deleted_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT melawa_scope_chk CHECK (jurisdiction_scope IN ('STATE', 'DIVISION', 'DISTRICT')),
+  CONSTRAINT melawa_target_chk CHECK (
+    (jurisdiction_scope = 'STATE'    AND target_division_id IS NULL AND target_district_id IS NULL) OR
+    (jurisdiction_scope = 'DIVISION' AND target_division_id IS NOT NULL AND target_district_id IS NULL) OR
+    (jurisdiction_scope = 'DISTRICT' AND target_division_id IS NOT NULL AND target_district_id IS NOT NULL)
+  ),
+  CONSTRAINT melawa_dates_chk CHECK (end_date IS NULL OR end_date >= event_date)
+);
+CREATE INDEX IF NOT EXISTS idx_melawa_active ON melawa_events(is_active, deleted_at, event_date);
+
+-- ====================================================
+-- PUBLIC SUGGESTIONS AND GRIEVANCES
+-- One row per ticket. The ticket number is derived from the id once the row
+-- exists, so it can never collide. `escalation_level` is advanced only by the
+-- SLA sweep: 1 = reminders sent to the district (copying the division),
+-- 2 = escalated to the state as overdue / critical.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS grievances (
+  id                  SERIAL PRIMARY KEY,
+  ticket_no           TEXT UNIQUE,
+  submission_type     TEXT NOT NULL,
+  division_id         INTEGER NOT NULL REFERENCES vibhags(id) ON DELETE RESTRICT,
+  district_id         INTEGER NOT NULL REFERENCES districts(id) ON DELETE RESTRICT,
+  full_name           TEXT NOT NULL,
+  email               TEXT NOT NULL,
+  mobile              TEXT NOT NULL,
+  subject             TEXT NOT NULL,
+  description         TEXT NOT NULL,
+  attachments         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status              TEXT NOT NULL DEFAULT 'NEW',
+  priority            TEXT NOT NULL DEFAULT 'NORMAL',
+  escalation_level    SMALLINT NOT NULL DEFAULT 0,
+  acknowledged_at     TIMESTAMPTZ,
+  acknowledged_by     INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  action_taken_notes  TEXT NOT NULL DEFAULT '',
+  resolved_at         TIMESTAMPTZ,
+  resolved_by         INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  closed_at           TIMESTAMPTZ,
+  last_reminder_at    TIMESTAMPTZ,
+  l1_escalated_at     TIMESTAMPTZ,
+  l2_escalated_at     TIMESTAMPTZ,
+  closure_notified_at TIMESTAMPTZ,
+  feedback_token      TEXT NOT NULL DEFAULT replace(gen_random_uuid()::text, '-', ''),
+  satisfaction_rating SMALLINT,
+  satisfaction_comment TEXT NOT NULL DEFAULT '',
+  rated_at            TIMESTAMPTZ,
+  deleted_at          TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT grievances_type_chk CHECK (submission_type IN ('SUGGESTION', 'COMPLAINT')),
+  CONSTRAINT grievances_status_chk CHECK (status IN ('NEW', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED')),
+  CONSTRAINT grievances_priority_chk CHECK (priority IN ('NORMAL', 'HIGH')),
+  CONSTRAINT grievances_rating_chk CHECK (satisfaction_rating IS NULL OR satisfaction_rating BETWEEN 1 AND 5),
+  -- The mandatory resolution rule, enforced where no client can skip it.
+  CONSTRAINT grievances_resolution_notes_chk CHECK (
+    status NOT IN ('RESOLVED', 'CLOSED') OR LENGTH(TRIM(action_taken_notes)) > 0
+  )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_grievances_feedback_token ON grievances(feedback_token);
+CREATE INDEX IF NOT EXISTS idx_grievances_scope ON grievances(division_id, district_id, status, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_grievances_open ON grievances(status, created_at) WHERE deleted_at IS NULL;
+
+-- Every status change, note and escalation on a ticket, oldest first.
+CREATE TABLE IF NOT EXISTS grievance_events (
+  id            SERIAL PRIMARY KEY,
+  grievance_id  INTEGER NOT NULL REFERENCES grievances(id) ON DELETE CASCADE,
+  actor_id      INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+  event_type    TEXT NOT NULL,
+  from_status   TEXT,
+  to_status     TEXT,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_grievance_events_ticket ON grievance_events(grievance_id, created_at);
+
+-- ====================================================
+-- NOTIFICATIONS
+-- `notifications` is the in-app bell, one row per recipient.
+-- `message_outbox` records every SMS and e-mail the platform sends, whether a
+-- gateway is configured or not, so a missing integration is visible rather
+-- than silently dropping alerts.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id            SERIAL PRIMARY KEY,
+  user_id       INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  body          TEXT NOT NULL DEFAULT '',
+  link          TEXT NOT NULL DEFAULT '',
+  category      TEXT NOT NULL DEFAULT 'general',
+  priority      TEXT NOT NULL DEFAULT 'NORMAL',
+  grievance_id  INTEGER REFERENCES grievances(id) ON DELETE CASCADE,
+  read_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS message_outbox (
+  id            SERIAL PRIMARY KEY,
+  channel       TEXT NOT NULL,
+  recipient     TEXT NOT NULL,
+  subject       TEXT NOT NULL DEFAULT '',
+  body          TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'QUEUED',
+  error         TEXT NOT NULL DEFAULT '',
+  grievance_id  INTEGER REFERENCES grievances(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at       TIMESTAMPTZ,
+  CONSTRAINT message_outbox_channel_chk CHECK (channel IN ('SMS', 'EMAIL')),
+  CONSTRAINT message_outbox_status_chk CHECK (status IN ('QUEUED', 'SENT', 'FAILED', 'LOGGED'))
+);
+CREATE INDEX IF NOT EXISTS idx_message_outbox_status ON message_outbox(status, created_at);

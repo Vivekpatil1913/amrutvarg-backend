@@ -39,8 +39,11 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true, limit: "4mb" }));
   app.use(cookieParser());
 
-  // Serve uploads
+  // Serve uploads. Grievance attachments are excluded: they are a citizen's
+  // evidence, served only through the jurisdiction-checked admin route.
   const uploadDir = path.resolve(process.cwd(), env.upload.dir);
+  app.use("/uploads/grievances", (req, res) =>
+    res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } }));
   app.use("/uploads", express.static(uploadDir));
 
   // Global rate limit

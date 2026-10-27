@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import { query, queryOne } from "../db/pool.js";
 import { env } from "../config/env.js";
-import { unauthorized, asyncHandler } from "../lib/errors.js";
+import { unauthorized, forbidden, asyncHandler } from "../lib/errors.js";
+import { isStateRole, isStaffRole } from "../lib/scope.js";
 
 export async function attachUser(req, res, next) {
   try {
@@ -13,7 +14,8 @@ export async function attachUser(req, res, next) {
 
     const payload = jwt.verify(token, env.jwt.secret);
     const session = await queryOne(
-      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.name, u.role, u.avatar_url, u.is_active
+      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.name, u.role, u.avatar_url, u.is_active,
+              u.vibhag_id, u.district_id, u.phone
        FROM admin_sessions s
        JOIN admin_users u ON u.id = s.user_id
        WHERE s.id = $1 AND s.revoked_at IS NULL`,
@@ -36,6 +38,9 @@ export async function attachUser(req, res, next) {
       name: session.name,
       role: session.role,
       avatarUrl: session.avatar_url,
+      vibhagId: session.vibhag_id,
+      districtId: session.district_id,
+      phone: session.phone,
     };
   } catch {
     // Invalid token — just skip
@@ -50,8 +55,17 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
 
 export const requireAdmin = asyncHandler(async (req, _res, next) => {
   if (!req.user) throw unauthorized();
-  if (req.user.role !== "admin" && req.user.role !== "superadmin") {
+  if (!isStateRole(req.user.role)) {
     throw unauthorized("Admin access required");
   }
+  next();
+});
+
+// Any of the three administrative tiers. Routes behind this one must narrow
+// what they read and write to the caller's jurisdiction (src/lib/scope.js);
+// passing this check says only that the caller is staff, not where.
+export const requireStaff = asyncHandler(async (req, _res, next) => {
+  if (!req.user) throw unauthorized();
+  if (!isStaffRole(req.user.role)) throw forbidden("Staff access required");
   next();
 });

@@ -28,7 +28,7 @@ function safeFilename(original) {
 // multer does not create its destination, and a missing folder surfaces as an
 // opaque ENOENT in the middle of an upload. The two original folders are in
 // the repository; video/ and audio/ are new, so every one is ensured here.
-for (const sub of ["photos", "media", "video", "audio"]) {
+for (const sub of ["photos", "media", "video", "audio", "grievances"]) {
   mkdirSync(path.join(env.upload.dir, sub), { recursive: true });
 }
 
@@ -179,3 +179,32 @@ export const uploadAudioFile = multer({
     "Only MP3, WAV, M4A, AAC, OGG or FLAC audio files are allowed"
   ),
 });
+
+// Public suggestion / complaint attachments: up to five photos and one video.
+//
+// multer has one size ceiling per upload, so it is set to the video's 20 MB
+// and the stricter 3 MB photo limit is checked by the route once the files
+// are on disk. Both the declared type and the extension must match the
+// allowed list; the bytes are checked after that, as everywhere else.
+const GRIEVANCE_PHOTO = { types: ["image/jpeg", "image/png", "image/webp"], exts: [".jpg", ".jpeg", ".png", ".webp"] };
+const GRIEVANCE_VIDEO = { types: ["video/mp4", "video/quicktime", "video/webm"], exts: [".mp4", ".mov", ".webm"] };
+
+export const uploadGrievanceMedia = multer({
+  storage: makeStorage("grievances"),
+  limits: { fileSize: 20 * 1024 * 1024, files: 6 },
+  fileFilter: (req, file, cb) => {
+    const rule = file.fieldname === "photos" ? GRIEVANCE_PHOTO : file.fieldname === "video" ? GRIEVANCE_VIDEO : null;
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (!rule) return cb(new AppError("VALIDATION_ERROR", `Unexpected file field "${file.fieldname}"`, 422));
+    if (rule.types.includes(String(file.mimetype).toLowerCase()) && rule.exts.includes(ext)) return cb(null, true);
+    cb(new AppError(
+      "VALIDATION_ERROR",
+      file.fieldname === "photos" ? "Photos must be JPG, JPEG, PNG or WEBP" : "Video must be MP4, MOV or WEBM",
+      422,
+      [{ field: file.fieldname, message: file.fieldname === "photos" ? "Photos must be JPG, JPEG, PNG or WEBP" : "Video must be MP4, MOV or WEBM" }]
+    ));
+  },
+}).fields([
+  { name: "photos", maxCount: 5 },
+  { name: "video", maxCount: 1 },
+]);
