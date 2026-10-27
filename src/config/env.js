@@ -19,7 +19,7 @@ export const env = {
     host: optional("PGHOST", "localhost"),
     port: parseInt(optional("PGPORT", "5432"), 10),
     user: optional("PGUSER", "postgres"),
-    password: optional("PGPASSWORD", "postgres123"),
+    password: optional("PGPASSWORD", "root"),
     database: optional("PGDATABASE", "amrutvarg_cms"),
   },
 
@@ -77,8 +77,8 @@ export const env = {
   },
 
   seed: {
-    adminEmail: optional("SEED_ADMIN_EMAIL", "admin@amrutvarg.local"),
-    adminPassword: optional("SEED_ADMIN_PASSWORD", "Admin@1234"),
+    adminEmail: optional("SEED_ADMIN_EMAIL", "admin@amrut.com"),
+    adminPassword: optional("SEED_ADMIN_PASSWORD", "admin123"),
     adminName: optional("SEED_ADMIN_NAME", "Admin"),
   },
 };

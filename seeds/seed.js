@@ -11,8 +11,8 @@ const pool = new pg.Pool({
 });
 
 async function upsertAdmin() {
-  const email = process.env.SEED_ADMIN_EMAIL || "admin@amrutvarg.local";
-  const password = process.env.SEED_ADMIN_PASSWORD || "Admin@1234";
+  const email = process.env.SEED_ADMIN_EMAIL || "admin@amrut.com";
+  const password = process.env.SEED_ADMIN_PASSWORD || "admin123";
   const name = process.env.SEED_ADMIN_NAME || "Admin";
   const hash = await bcrypt.hash(password, 12);
 
