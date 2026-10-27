@@ -55,8 +55,10 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
 
 export const requireAdmin = asyncHandler(async (req, _res, next) => {
   if (!req.user) throw unauthorized();
+  // Signed in but not state level: a permission problem, not an expired
+  // session, so 403 — a 401 sends the admin panel back to the login screen.
   if (!isStateRole(req.user.role)) {
-    throw unauthorized("Admin access required");
+    throw forbidden("State-level access required");
   }
   next();
 });

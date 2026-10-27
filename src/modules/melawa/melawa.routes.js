@@ -56,8 +56,11 @@ publicRouter.get("/active", async (req, res, next) => {
       let where = LIVE;
       if (divisionId || districtId) {
         const parts = ["m.jurisdiction_scope = 'STATE'"];
-        if (divisionId) { params.push(divisionId); parts.push(`m.target_division_id = $${params.length}`); }
-        if (districtId) { params.push(districtId); parts.push(`m.target_district_id = $${params.length}`); }
+        // A district melawa also carries its division's id, so the division
+        // match is limited to division-level rows — otherwise every district
+        // in the division would see its neighbours' melawas.
+        if (divisionId) { params.push(divisionId); parts.push(`(m.jurisdiction_scope = 'DIVISION' AND m.target_division_id = $${params.length})`); }
+        if (districtId) { params.push(districtId); parts.push(`(m.jurisdiction_scope = 'DISTRICT' AND m.target_district_id = $${params.length})`); }
         where += ` AND (${parts.join(" OR ")})`;
       }
       rows = await query(

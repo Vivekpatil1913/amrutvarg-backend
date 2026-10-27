@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { query, queryOne } from "../../db/pool.js";
 import { requireAdmin } from "../../middleware/auth.js";
-import { asyncHandler, success, paginated, notFound, validation, conflict, AppError } from "../../lib/errors.js";
+import { asyncHandler, success, paginated, notFound, validation, conflict, AppError, forbidden } from "../../lib/errors.js";
 import { ROLES, STAFF_ROLES } from "../../lib/scope.js";
 import { audit } from "../../lib/audit.js";
 
@@ -41,6 +41,14 @@ const updateSchema = z.object({
   ...base,
   password: z.union([z.string().min(8, "Password must contain at least 8 characters").max(128), z.literal("")]).optional().default(""),
 });
+
+// Only a Super Admin can create a Super Admin or change one. Without this, any
+// state-level account could mint a superadmin and sign in as it.
+function assertCanAssign(user, ...roles) {
+  if (roles.includes(ROLES.SUPERADMIN) && user.role !== ROLES.SUPERADMIN) {
+    throw forbidden("Only a Super Admin can create or change a Super Admin account");
+  }
+}
 
 // A manager's jurisdiction must match their tier: a division manager names a
 // vibhag, a district manager a district (and inherits its vibhag). State roles
@@ -104,6 +112,7 @@ router.post("/", asyncHandler(async (req, res) => {
   const parsed = createSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw validation(issuesOf(parsed.error));
   const d = parsed.data;
+  assertCanAssign(req.user, d.role);
   const scope = await resolveJurisdiction(d);
   const hash = await bcrypt.hash(d.password, 12);
   let row;
@@ -129,6 +138,7 @@ router.put("/:id", asyncHandler(async (req, res) => {
   const parsed = updateSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw validation(issuesOf(parsed.error));
   const d = parsed.data;
+  assertCanAssign(req.user, d.role, existing.role);
 
   // Nobody can lock themselves out by accident.
   if (id === req.user.id && (!d.is_active || d.role !== existing.role)) {

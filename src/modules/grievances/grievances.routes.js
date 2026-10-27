@@ -44,7 +44,7 @@ export const publicRouter = Router();
 
 const submitLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: env.sla.submitLimit,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: { code: "RATE_LIMITED", message: "Too many submissions. Please try again later." } },

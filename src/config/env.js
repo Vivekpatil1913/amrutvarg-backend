@@ -62,6 +62,9 @@ export const env = {
     sweepMinutes: parseInt(optional("SLA_SWEEP_MINUTES", "15"), 10),
     reminderHours: parseInt(optional("SLA_REMINDER_HOURS", "24"), 10),
     criticalHours: parseInt(optional("SLA_CRITICAL_HOURS", "72"), 10),
+    // Public suggestion / complaint submissions per IP per 15 minutes. Raise it
+    // where many citizens share one address (a CSC centre, a school network).
+    submitLimit: parseInt(optional("GRIEVANCE_RATE_LIMIT", "10"), 10),
   },
 
   // Outbound SMS and e-mail. Each is a plain JSON webhook so any gateway can
