@@ -60,7 +60,7 @@ const collegeParticipant = {
 // The organiser is an institution, so three names appear: the body, whoever
 // runs the varg, and whoever answers the phone.
 const organizer = {
-  organisation: "श्री. एकात्म विद्यालय",
+  vargName: "श्री. एकात्म विद्यालय",
   branch: "कोथरूड शाखा",
   name: "संजय कुलकर्णी",
   contactPerson: "मीना देशपांडे",
@@ -218,7 +218,7 @@ test("unknown public submission fields are stripped from parsed data", () => {
 // branch is optional — a single school or housing society has none to give.
 
 test("every organizer field except the branch is required", () => {
-  for (const key of ["organisation", "name", "contactPerson", "designation", "district"]) {
+  for (const key of ["vargName", "name", "contactPerson", "designation", "district"]) {
     const without = { ...organizer, [key]: "" };
     const r = organizerSchema.safeParse(without);
     assert.equal(r.success, false, `${key} should be required`);
@@ -236,6 +236,26 @@ test("the branch is optional and may be omitted entirely", () => {
   const without = { ...organizer };
   delete without.branch;
   assert.equal(organizerSchema.safeParse(without).success, true);
+});
+
+test("the Varg name says so when missing and is capped at 200 characters", () => {
+  const r = organizerSchema.safeParse({ ...organizer, vargName: "" });
+  assert.equal(r.success, false);
+  assert.ok(r.error.issues.some((i) => i.path[0] === "vargName" && i.message === "A Varg name is required"));
+  const missing = { ...organizer };
+  delete missing.vargName;
+  assert.ok(organizerSchema.safeParse(missing).error.issues.some((i) => i.message === "A Varg name is required"));
+  assert.equal(organizerSchema.safeParse({ ...organizer, vargName: "व".repeat(200) }).success, true);
+  assert.equal(organizerSchema.safeParse({ ...organizer, vargName: "व".repeat(201) }).success, false);
+});
+
+test("a client still posting the old `organisation` key is mapped to vargName", () => {
+  const legacy = { ...organizer, organisation: organizer.vargName };
+  delete legacy.vargName;
+  const r = organizerSchema.safeParse(legacy);
+  assert.equal(r.success, true);
+  assert.equal(r.data.vargName, organizer.vargName);
+  assert.ok(!("organisation" in r.data));
 });
 
 test("the organiser and the contact person are separate fields", () => {

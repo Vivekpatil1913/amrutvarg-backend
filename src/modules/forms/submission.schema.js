@@ -105,9 +105,24 @@ export const participantSchema = z.union([schoolParticipant, collegeParticipant]
 // rather than a reworded one. Submissions made before this keep their stored
 // `place` — the column is JSONB and nothing rewrites it — and the admin still
 // has a label for it so those records read correctly.
-export const organizerSchema = z.object({
+//
+// `vargName` is the same fact the admin form calls "Varg Name" and stores in
+// vargs.varg_name, so a listing reads the same whichever side created it. It
+// replaces `organisation`; a client still posting the old key (a cached
+// bundle) is mapped across rather than rejected.
+export const VARG_NAME_MAX = 200;
+
+const legacyOrganizerKeys = (v) => {
+  if (!v || typeof v !== "object" || v.vargName !== undefined || v.organisation === undefined) return v;
+  const { organisation, ...rest } = v;
+  return { ...rest, vargName: organisation };
+};
+
+export const organizerSchema = z.preprocess(legacyOrganizerKeys, z.object({
   name: required("Organizer name"),
-  organisation: required("Organization / Institution", 300),
+  vargName: z.string({ required_error: "A Varg name is required" }).trim()
+    .min(1, "A Varg name is required")
+    .max(VARG_NAME_MAX, `Varg name cannot exceed ${VARG_NAME_MAX} characters`),
   // Optional: a single school or housing society has no branch to give, and
   // forcing one would mean inventing it.
   branch: optionalText(255),
@@ -115,7 +130,7 @@ export const organizerSchema = z.object({
   designation: required("Designation"),
   mobile: mobile("Mobile"),
   district: required("District"),
-});
+}));
 
 // ── Leader ───────────────────────────────────────────────────────────────────
 // Posted as multipart, so every value arrives as a string and numbers are

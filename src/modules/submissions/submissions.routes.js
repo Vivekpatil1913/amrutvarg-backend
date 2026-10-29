@@ -124,8 +124,12 @@ router.post("/organizers", publicSubmissionLimit, asyncHandler(async (req, res) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, 'PUBLISHED', 'organizer', $9)
        RETURNING id, vibhag_mr, vibhag_en, district_mr, district_en, district_id,
                  taluka, village, school_name, varg_name, coordinator_name, status`,
+      // The registration's Varg Name is the listing's varg_name — the field the
+      // admin form edits and the public cards show. The form asks for no
+      // school, so the required school_name starts as the same name until an
+      // administrator fills it in. The branch stays on the submission only.
       [vibhag.name_mr, vibhag.name_en, district.name_mr, district.name_en, district.id,
-       data.organisation, data.branch || "", data.contactPerson, submission.id]
+       data.vargName, data.vargName, data.contactPerson, submission.id]
     );
     return { submission, varg };
   });
@@ -135,13 +139,13 @@ router.post("/organizers", publicSubmissionLimit, asyncHandler(async (req, res) 
   responsibleFor({ districtId: district.id, divisionId: vibhag.id })
     .then(({ district: d, division, state }) =>
       notify([...d, ...division, ...state], {
-        title: `New Amrut Varg listed: ${varg.school_name}`,
+        title: `New Amrut Varg listed: ${varg.varg_name}`,
         body: `${varg.district_mr} · self-published by ${data.name}. Review and moderate if needed.`,
         link: `/admin/vargs/${varg.id}`,
         category: "varg",
       }))
     .catch((err) => console.error("Varg listing notice failed:", err.message));
-  audit(req, "varg.self_publish", "varg", varg.id, { submission: submission.id, school: varg.school_name, district: varg.district_mr });
+  audit(req, "varg.self_publish", "varg", varg.id, { submission: submission.id, varg: varg.varg_name, district: varg.district_mr });
 
   return success(res, { id: submission.id, submitted_at: submission.submitted_at, varg }, 201);
 }));

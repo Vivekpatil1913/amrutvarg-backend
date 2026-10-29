@@ -742,6 +742,22 @@ ALTER TABLE vargs ADD COLUMN IF NOT EXISTS moderated_at  TIMESTAMPTZ;
 UPDATE vargs SET status = 'UNPUBLISHED' WHERE is_active = FALSE AND status = 'PUBLISHED';
 CREATE INDEX IF NOT EXISTS idx_vargs_status ON vargs(status, is_active, deleted_at);
 
+-- Organizer listings created before the form asked for a Varg Name stored the
+-- organisation in school_name and the optional branch in varg_name, so a card
+-- (which shows varg_name first) read the branch, or nothing, instead of the
+-- name the organiser gave. Point varg_name at that name — but only on rows an
+-- administrator has not edited since, i.e. varg_name still holds exactly the
+-- submitted branch. Re-running is a no-op.
+UPDATE vargs v
+   SET varg_name = s.data->>'organisation', updated_at = NOW()
+  FROM form_submissions s
+ WHERE v.submission_id = s.id
+   AND v.source = 'organizer'
+   AND s.form_type = 'organizer'
+   AND COALESCE(s.data->>'organisation', '') <> ''
+   AND v.varg_name = COALESCE(s.data->>'branch', '')
+   AND v.varg_name <> s.data->>'organisation';
+
 -- ====================================================
 -- AMRUT VARG MELAWA (gathering) ANNOUNCEMENTS
 -- Shown in the flashing ticker above the site header. A state-wide melawa has
