@@ -935,3 +935,7 @@ CREATE TABLE IF NOT EXISTS varg_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_varg_activities_geo ON varg_activities(division_id, district_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_varg_activities_created ON varg_activities(created_at DESC) WHERE deleted_at IS NULL;
+
+-- An activity report also publishes the school in the public "कार्यरत अमृत
+-- वर्ग" listing; this links the two so removing the report can unlist it.
+ALTER TABLE varg_activities ADD COLUMN IF NOT EXISTS varg_id INTEGER REFERENCES vargs(id) ON DELETE SET NULL;

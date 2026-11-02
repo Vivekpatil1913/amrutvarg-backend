@@ -94,7 +94,7 @@ router.get(
       params.push(req.query.status);
       conditions.push(`status = $${params.length}`);
     }
-    if (req.query.source === "organizer" || req.query.source === "admin") {
+    if (["organizer", "admin", "activity"].includes(req.query.source)) {
       params.push(req.query.source);
       conditions.push(`source = $${params.length}`);
     }

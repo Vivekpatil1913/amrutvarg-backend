@@ -2,13 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import { unlink } from "fs/promises";
-import { query, queryOne } from "../../db/pool.js";
+import { query, queryOne, transaction } from "../../db/pool.js";
 import { requireStaff } from "../../middleware/auth.js";
 import { uploadActivityPhotos, hasAllowedImageSignature, ACTIVITY_PHOTO } from "../../middleware/upload.js";
 import { asyncHandler, success, notFound, validation } from "../../lib/errors.js";
 import { scopeSql, assertInScope } from "../../lib/scope.js";
 import { audit } from "../../lib/audit.js";
 import { activitySchema, filterSchema, toCsv } from "./activities.schema.js";
+import { notify, responsibleFor } from "../notifications/notifications.service.js";
 
 // Amrut Varg activity records: the public 'Amrut Varg' portal files them and
 // shows the repository; the admin panel lists, exports and removes them.
@@ -131,22 +132,58 @@ publicRouter.post(
       size: f.size,
     }));
 
+    // The report and its public "कार्यरत अमृत वर्ग" listing are written in one
+    // transaction, like an organiser's self-published listing: the school is
+    // live under its division and district the moment the reporter sees the
+    // confirmation, and administrators moderate afterwards.
     let row;
+    let varg;
     try {
-      row = await queryOne(
-        `INSERT INTO varg_activities
-           (division_id, district_id, taluka_id, taluka, institution_name, incharge_name,
-            incharge_mobile, participant_count, frequency, description, photos)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, created_at`,
-        [data.division_id, data.district_id, data.taluka_id, data.taluka, data.institution_name,
-         data.incharge_name, data.incharge_mobile, data.participant_count, data.frequency,
-         data.description, JSON.stringify(photos)]
-      );
+      ({ row, varg } = await transaction(async (tx) => {
+        const geo = await tx.queryOne(
+          `SELECT d.name_mr AS district_mr, d.name_en AS district_en, v.name_mr AS vibhag_mr, v.name_en AS vibhag_en
+           FROM districts d JOIN vibhags v ON v.id = d.vibhag_id WHERE d.id = $1`,
+          [data.district_id]
+        );
+        const varg = await tx.queryOne(
+          `INSERT INTO vargs
+             (vibhag_mr, vibhag_en, district_mr, district_en, district_id, taluka, taluka_id,
+              school_name, coordinator_name, enrollment_count, is_active, status, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, TRUE, 'PUBLISHED', 'activity')
+           RETURNING id, vibhag_mr, vibhag_en, district_mr, district_en, district_id,
+                     taluka, village, school_name, varg_name, coordinator_name, enrollment_count, status`,
+          [geo.vibhag_mr, geo.vibhag_en, geo.district_mr, geo.district_en, data.district_id,
+           data.taluka, data.taluka_id, data.institution_name, data.incharge_name, data.participant_count]
+        );
+        const row = await tx.queryOne(
+          `INSERT INTO varg_activities
+             (division_id, district_id, taluka_id, taluka, institution_name, incharge_name,
+              incharge_mobile, participant_count, frequency, description, photos, varg_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at`,
+          [data.division_id, data.district_id, data.taluka_id, data.taluka, data.institution_name,
+           data.incharge_name, data.incharge_mobile, data.participant_count, data.frequency,
+           data.description, JSON.stringify(photos), varg.id]
+        );
+        return { row, varg };
+      }));
     } catch (err) {
       await discard(files);
       throw err;
     }
-    return success(res, { id: row.id, submitted_at: row.created_at }, 201);
+
+    // The officers for that place are told a listing went live so they can
+    // review it. After the response, and never fatal.
+    responsibleFor({ districtId: data.district_id, divisionId: data.division_id })
+      .then(({ district: d, division, state }) =>
+        notify([...d, ...division, ...state], {
+          title: `New Amrut Varg reported: ${varg.school_name}`,
+          body: `${varg.district_mr} · Pramukh ${data.incharge_name}. Review and moderate if needed.`,
+          link: `/admin/vargs/${varg.id}`,
+          category: "varg",
+        }))
+      .catch((err) => console.error("Varg activity notice failed:", err.message));
+
+    return success(res, { id: row.id, submitted_at: row.created_at, varg }, 201);
   })
 );
 
@@ -276,7 +313,8 @@ const PRAMUKH_SOURCES = `
          g.district_id, d.vibhag_id, g.enrollment_count, NULL,
          g.is_active AND g.status = 'PUBLISHED', g.created_at, 'varg'
   FROM vargs g LEFT JOIN districts d ON d.id = g.district_id
-  WHERE g.deleted_at IS NULL AND NULLIF(TRIM(g.coordinator_name), '') IS NOT NULL`;
+  -- Listings published by an activity report are already counted above.
+  WHERE g.deleted_at IS NULL AND g.source <> 'activity' AND NULLIF(TRIM(g.coordinator_name), '') IS NOT NULL`;
 
 adminRouter.get("/pramukhs", asyncHandler(async (req, res) => {
   const f = parseFilters(req.query);
@@ -354,7 +392,20 @@ adminRouter.delete("/:id", asyncHandler(async (req, res) => {
   const row = await queryOne(`SELECT district_id, division_id FROM varg_activities WHERE id = $1 AND deleted_at IS NULL`, [id.data]);
   if (!row) throw notFound("Activity");
   await assertInScope(req.user, { districtId: row.district_id, divisionId: row.division_id });
-  await query(`UPDATE varg_activities SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`, [id.data]);
+  await transaction(async (tx) => {
+    const gone = await tx.queryOne(
+      `UPDATE varg_activities SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING varg_id`,
+      [id.data]
+    );
+    // The listing this report published goes with it; a listing it did not
+    // create is left alone.
+    if (gone?.varg_id) {
+      await tx.query(
+        `UPDATE vargs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND source = 'activity' AND deleted_at IS NULL`,
+        [gone.varg_id]
+      );
+    }
+  });
   await audit(req, "delete", "varg_activities", id.data);
   return success(res, { id: id.data });
 }));
