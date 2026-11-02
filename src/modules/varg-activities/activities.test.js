@@ -62,7 +62,9 @@ test("student count must be a positive whole number", () => {
 test("contact number is optional but must be a 10-digit mobile when given", () => {
   assert.equal(parse({ incharge_mobile: "" }).success, true);
   assert.equal(parse({ incharge_mobile: "9876543210" }).success, true);
-  for (const bad of ["12345", "98765432101", "5876543210", "98765-4321"]) {
+  // The PRD rule is exactly ten digits: /^[0-9]{10}$/.
+  assert.equal(parse({ incharge_mobile: "0123456789" }).success, true);
+  for (const bad of ["12345", "98765432101", "98765-4321", "+919876543"]) {
     assert.ok(fieldsOf(parse({ incharge_mobile: bad })).includes("incharge_mobile"), bad);
   }
 });

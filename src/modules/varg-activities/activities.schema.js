@@ -43,7 +43,7 @@ export const activitySchema = z.object({
   institution_name: requiredText(MAX.institution, "School / institution name"),
   incharge_name: requiredText(MAX.incharge, "Amrut Varg Pramukh name"),
   incharge_mobile: z.string().trim().optional().default("")
-    .refine((v) => v === "" || /^[6-9]\d{9}$/.test(v), "Enter a valid 10-digit mobile number"),
+    .refine((v) => v === "" || /^[0-9]{10}$/.test(v), "Enter a valid 10-digit mobile number"),
   participant_count: z.string().trim()
     .regex(/^\d+$/, "Enter the number of students as a whole number")
     .transform(Number)

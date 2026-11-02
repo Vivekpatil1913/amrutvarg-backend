@@ -246,6 +246,81 @@ adminRouter.get("/export.csv", asyncHandler(async (req, res) => {
   return res.send(`﻿${toCsv(header, body)}\r\n`);
 }));
 
+// GET /admin/varg-activities/pramukhs — the Amrut Varg Pramukhs (leaders /
+// in-charges) currently on record, one row per person (name + contact), from
+// all three places a Pramukh is recorded:
+//
+//   activity      the in-charge named on an activity record (this module)
+//   registration  a public "अमृत वर्ग प्रमुख" leader registration
+//   varg          the coordinator named on a school's varg listing
+//
+// Each row carries the centres the person runs, their jurisdiction, the
+// student headcount and whether any of their entries is currently active.
+// Everything is confined to the caller's jurisdiction.
+const PRAMUKH_SOURCES = `
+  SELECT a.incharge_name AS name, a.incharge_mobile AS mobile, a.institution_name AS institution,
+         a.district_id, a.division_id, a.participant_count AS students, a.frequency,
+         a.is_active AS active, a.created_at AS recorded_at, 'activity' AS source
+  FROM varg_activities a WHERE a.deleted_at IS NULL
+  UNION ALL
+  SELECT s.data->>'leaderName', COALESCE(s.data->>'coordinatorPhone', ''), COALESCE(s.data->>'institutionName', ''),
+         d.id, d.vibhag_id, NULL, NULL,
+         s.status <> 'archived', s.submitted_at, 'registration'
+  FROM form_submissions s
+  LEFT JOIN districts d ON d.deleted_at IS NULL
+   AND (LOWER(TRIM(s.data->>'district')) IN (LOWER(d.name_mr), LOWER(NULLIF(d.name_en, '')))
+        OR TRIM(s.data->>'district') = ANY(d.former_names))
+  WHERE s.deleted_at IS NULL AND s.form_type = 'leader' AND NULLIF(TRIM(s.data->>'leaderName'), '') IS NOT NULL
+  UNION ALL
+  SELECT g.coordinator_name, '', g.school_name,
+         g.district_id, d.vibhag_id, g.enrollment_count, NULL,
+         g.is_active AND g.status = 'PUBLISHED', g.created_at, 'varg'
+  FROM vargs g LEFT JOIN districts d ON d.id = g.district_id
+  WHERE g.deleted_at IS NULL AND NULLIF(TRIM(g.coordinator_name), '') IS NOT NULL`;
+
+adminRouter.get("/pramukhs", asyncHandler(async (req, res) => {
+  const f = parseFilters(req.query);
+  const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 8));
+  const params = [];
+  const conditions = [scopeSql(req.user, { district: "p.district_id", division: "p.division_id" }, params)];
+  if (f.division_id) { params.push(f.division_id); conditions.push(`p.division_id = $${params.length}`); }
+  if (f.district_id) { params.push(f.district_id); conditions.push(`p.district_id = $${params.length}`); }
+  if (f.search) {
+    params.push(`%${f.search}%`);
+    conditions.push(`(p.name ILIKE $${params.length} OR p.institution ILIKE $${params.length})`);
+  }
+  const where = conditions.join(" AND ");
+  const grouped = `
+    SELECT MIN(TRIM(p.name)) AS name, p.mobile,
+           COUNT(*)::int AS centres,
+           COALESCE(SUM(p.students), 0)::int AS students,
+           BOOL_OR(p.active) AS is_active,
+           MAX(p.recorded_at) AS last_recorded,
+           (ARRAY_AGG(p.institution ORDER BY p.recorded_at DESC) FILTER (WHERE p.institution <> ''))[1:3] AS institutions,
+           (ARRAY_AGG(COALESCE(NULLIF(d.name_en, ''), d.name_mr) ORDER BY p.recorded_at DESC) FILTER (WHERE d.id IS NOT NULL))[1] AS district,
+           (ARRAY_AGG(COALESCE(NULLIF(v.name_en, ''), v.name_mr) ORDER BY p.recorded_at DESC) FILTER (WHERE v.id IS NOT NULL))[1] AS division,
+           (ARRAY_AGG(p.frequency ORDER BY p.recorded_at DESC) FILTER (WHERE p.frequency IS NOT NULL))[1] AS frequency,
+           ARRAY_AGG(DISTINCT p.source) AS sources
+    FROM (${PRAMUKH_SOURCES}) p
+    LEFT JOIN districts d ON d.id = p.district_id
+    LEFT JOIN vibhags v ON v.id = p.division_id
+    WHERE ${where}
+    GROUP BY LOWER(TRIM(p.name)), p.mobile`;
+  const rows = await query(
+    `SELECT * FROM (${grouped}) g ORDER BY g.is_active DESC, g.last_recorded DESC NULLS LAST LIMIT $${params.length + 1}`,
+    [...params, limit]
+  );
+  const totals = await queryOne(
+    `SELECT COUNT(*)::int AS pramukhs,
+            COUNT(*) FILTER (WHERE is_active)::int AS active,
+            COALESCE(SUM(students), 0)::int AS students,
+            COALESCE(SUM(centres), 0)::int AS centres
+     FROM (${grouped}) g`,
+    params
+  );
+  return success(res, { rows, totals });
+}));
+
 const idSchema = z.coerce.number().int().positive();
 
 adminRouter.get("/:id", asyncHandler(async (req, res) => {
