@@ -28,7 +28,7 @@ function safeFilename(original) {
 // multer does not create its destination, and a missing folder surfaces as an
 // opaque ENOENT in the middle of an upload. The two original folders are in
 // the repository; video/ and audio/ are new, so every one is ensured here.
-for (const sub of ["photos", "media", "video", "audio", "grievances"]) {
+for (const sub of ["photos", "media", "video", "audio", "grievances", "activities"]) {
   mkdirSync(path.join(env.upload.dir, sub), { recursive: true });
 }
 
@@ -208,3 +208,29 @@ export const uploadGrievanceMedia = multer({
   { name: "photos", maxCount: 5 },
   { name: "video", maxCount: 1 },
 ]);
+
+// Amrut Varg activity photographs: at least three, at most ten, 5 MB each.
+// The minimum is the route's to enforce; multer only knows ceilings.
+export const ACTIVITY_PHOTO = {
+  types: ["image/jpeg", "image/png", "image/webp"],
+  exts: [".jpg", ".jpeg", ".png", ".webp"],
+  maxBytes: 5 * 1024 * 1024,
+  min: 3,
+  max: 10,
+};
+
+export const uploadActivityPhotos = multer({
+  storage: makeStorage("activities"),
+  limits: { fileSize: ACTIVITY_PHOTO.maxBytes, files: ACTIVITY_PHOTO.max },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (file.fieldname !== "photos") {
+      return cb(new AppError("VALIDATION_ERROR", `Unexpected file field "${file.fieldname}"`, 422));
+    }
+    if (ACTIVITY_PHOTO.types.includes(String(file.mimetype).toLowerCase()) && ACTIVITY_PHOTO.exts.includes(ext)) {
+      return cb(null, true);
+    }
+    const message = "Photos must be JPG, JPEG, PNG or WEBP";
+    cb(new AppError("VALIDATION_ERROR", message, 422, [{ field: "photos", message }]));
+  },
+}).array("photos", ACTIVITY_PHOTO.max);

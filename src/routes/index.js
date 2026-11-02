@@ -24,6 +24,7 @@ import formConfigRoutes from "../modules/forms/forms.routes.js";
 import { masterRouters } from "../modules/masters/masters.routes.js";
 import { publicRouter as melawaPublic, adminRouter as melawaAdmin } from "../modules/melawa/melawa.routes.js";
 import { publicRouter as grievancesPublic, adminRouter as grievancesAdmin } from "../modules/grievances/grievances.routes.js";
+import { publicRouter as vargActivitiesPublic, adminRouter as vargActivitiesAdmin } from "../modules/varg-activities/activities.routes.js";
 import notificationsRoutes from "../modules/notifications/notifications.routes.js";
 import usersRoutes, { auditRouter } from "../modules/users/users.routes.js";
 import { MASTER_KEYS } from "../modules/masters/masters.config.js";
@@ -95,6 +96,9 @@ export function buildRouter() {
   router.use("/melawa", melawaPublic);
   router.use("/grievances", grievancesPublic);
 
+  // Amrut Varg activity portal: public submission and digital repository
+  router.use("/varg-activities", vargActivitiesPublic);
+
   // Admin CMS
   router.use("/admin/announcements", announcementsRoutes);
   router.use("/admin/stories", storiesRoutes);
@@ -123,6 +127,7 @@ export function buildRouter() {
   // Jurisdiction-scoped operations (all three administrative tiers)
   router.use("/admin/melawa", melawaAdmin);
   router.use("/admin/grievances", grievancesAdmin);
+  router.use("/admin/varg-activities", vargActivitiesAdmin);
   router.use("/admin/notifications", notificationsRoutes);
 
   // State level only

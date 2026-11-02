@@ -67,7 +67,7 @@ publicRouter.get("/active", async (req, res, next) => {
         `${SELECT.replace("SELECT m.*", `SELECT m.id, m.title_mr, m.title_en, m.event_date, m.end_date,
                 m.start_time, m.end_time, m.venue_mr, m.venue_en, m.maps_url,
                 m.jurisdiction_scope, m.target_division_id, m.target_district_id,
-                m.highlights_mr, m.highlights_en`)}
+                m.highlights_mr, m.highlights_en, m.created_at`)}
          WHERE ${where}
          ORDER BY CASE m.jurisdiction_scope WHEN 'STATE' THEN 0 WHEN 'DIVISION' THEN 1 ELSE 2 END,
                   m.event_date, m.start_time`,

@@ -904,3 +904,34 @@ CREATE TABLE IF NOT EXISTS message_outbox (
   CONSTRAINT message_outbox_status_chk CHECK (status IN ('QUEUED', 'SENT', 'FAILED', 'LOGGED'))
 );
 CREATE INDEX IF NOT EXISTS idx_message_outbox_status ON message_outbox(status, created_at);
+
+-- ====================================================
+-- AMRUT VARG ACTIVITY RECORDS
+-- One row per Amrut Varg activity reported through the public 'Amrut Varg'
+-- portal: where it ran, who led it (the Pramukh), how many took part, how
+-- often it meets, and at least three photographs. Kept apart from `vargs`
+-- (the school directory) so neither changes the other's rules.
+-- ====================================================
+
+CREATE TABLE IF NOT EXISTS varg_activities (
+  id                 SERIAL PRIMARY KEY,
+  division_id        INTEGER NOT NULL REFERENCES vibhags(id) ON DELETE RESTRICT,
+  district_id        INTEGER NOT NULL REFERENCES districts(id) ON DELETE RESTRICT,
+  taluka_id          INTEGER REFERENCES talukas(id) ON DELETE SET NULL,
+  taluka             TEXT NOT NULL,
+  institution_name   TEXT NOT NULL,
+  incharge_name      TEXT NOT NULL,
+  incharge_mobile    TEXT NOT NULL DEFAULT '',
+  participant_count  INTEGER NOT NULL,
+  frequency          TEXT NOT NULL,
+  description        TEXT NOT NULL DEFAULT '',
+  photos             JSONB NOT NULL DEFAULT '[]'::jsonb,
+  is_active          BOOLEAN NOT NULL DEFAULT TRUE,
+  deleted_at         TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT varg_activities_frequency_chk CHECK (frequency IN ('DAILY', 'WEEKLY', 'MONTHLY')),
+  CONSTRAINT varg_activities_count_chk CHECK (participant_count > 0)
+);
+CREATE INDEX IF NOT EXISTS idx_varg_activities_geo ON varg_activities(division_id, district_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_varg_activities_created ON varg_activities(created_at DESC) WHERE deleted_at IS NULL;
