@@ -209,14 +209,14 @@ export const uploadGrievanceMedia = multer({
   { name: "video", maxCount: 1 },
 ]);
 
-// Amrut Varg activity photographs: at least three, at most ten, 5 MB each.
+// Amrut Varg activity photographs: one required, up to two more, 5 MB each.
 // The minimum is the route's to enforce; multer only knows ceilings.
 export const ACTIVITY_PHOTO = {
   types: ["image/jpeg", "image/png", "image/webp"],
   exts: [".jpg", ".jpeg", ".png", ".webp"],
   maxBytes: 5 * 1024 * 1024,
-  min: 3,
-  max: 10,
+  min: 1,
+  max: 3,
 };
 
 export const uploadActivityPhotos = multer({

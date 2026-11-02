@@ -89,7 +89,7 @@ publicRouter.post(
       const issues = parsed.success ? [] : issuesOf(parsed.error);
 
       if (files.length < ACTIVITY_PHOTO.min) {
-        issues.push({ field: "photos", message: `Upload at least ${ACTIVITY_PHOTO.min} photographs` });
+        issues.push({ field: "photos", message: `Upload at least ${ACTIVITY_PHOTO.min} photograph${ACTIVITY_PHOTO.min === 1 ? "" : "s"}` });
       }
       for (const f of files) {
         if (!(await hasAllowedImageSignature(f.path, { allowGif: false, expectedMime: f.mimetype }))) {
