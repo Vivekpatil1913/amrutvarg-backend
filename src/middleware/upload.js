@@ -219,6 +219,28 @@ export const ACTIVITY_PHOTO = {
   max: 3,
 };
 
+// The Excel sheet for a bulk activity import. Held in memory, never written
+// to disk: it is read once and thrown away. Browsers disagree on the type
+// they declare for .xlsx (some send octet-stream), so the extension is the
+// gate here and the zip signature is checked by the importer.
+export const IMPORT_SHEET = { exts: [".xlsx"], maxBytes: 5 * 1024 * 1024 };
+
+export const uploadImportSheet = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: IMPORT_SHEET.maxBytes, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    if (file.fieldname !== "file") {
+      return cb(new AppError("VALIDATION_ERROR", `Unexpected file field "${file.fieldname}"`, 422));
+    }
+    if (IMPORT_SHEET.exts.includes(ext)) return cb(null, true);
+    const message = ext === ".xls" || ext === ".csv"
+      ? `${ext} files cannot be imported. Open the file in Excel and use Save As → Excel Workbook (.xlsx).`
+      : "Choose an Excel workbook (.xlsx)";
+    cb(new AppError("VALIDATION_ERROR", message, 422, [{ field: "file", message }]));
+  },
+}).single("file");
+
 export const uploadActivityPhotos = multer({
   storage: makeStorage("activities"),
   limits: { fileSize: ACTIVITY_PHOTO.maxBytes, files: ACTIVITY_PHOTO.max },

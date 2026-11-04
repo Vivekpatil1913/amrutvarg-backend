@@ -60,6 +60,8 @@ export const filterSchema = z.object({
   division_id: z.union([z.literal(""), z.coerce.number().int().positive()]).optional().default(""),
   district_id: z.union([z.literal(""), z.coerce.number().int().positive()]).optional().default(""),
   frequency: z.union([z.literal(""), z.enum(FREQUENCIES)]).optional().default(""),
+  // "pending": no photograph yet (an import awaiting its photos).
+  photo_status: z.union([z.literal(""), z.enum(["pending", "added"])]).optional().default(""),
   search: z.string().trim().max(200).optional().default(""),
 });
 

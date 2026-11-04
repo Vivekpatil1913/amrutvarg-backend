@@ -70,9 +70,11 @@ test("contact number is optional but must be a 10-digit mobile when given", () =
 });
 
 test("filters accept blanks and reject unknown frequencies", () => {
-  assert.deepEqual(filterSchema.parse({}), { division_id: "", district_id: "", frequency: "", search: "" });
+  assert.deepEqual(filterSchema.parse({}), { division_id: "", district_id: "", frequency: "", photo_status: "", search: "" });
   assert.equal(filterSchema.parse({ division_id: "3" }).division_id, 3);
   assert.equal(filterSchema.safeParse({ frequency: "YEARLY" }).success, false);
+  assert.equal(filterSchema.parse({ photo_status: "pending" }).photo_status, "pending");
+  assert.equal(filterSchema.safeParse({ photo_status: "missing" }).success, false);
 });
 
 test("CSV cells are quoted and formula-safe", () => {

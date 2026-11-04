@@ -4,11 +4,15 @@ import rateLimit from "express-rate-limit";
 import { unlink } from "fs/promises";
 import { query, queryOne, transaction } from "../../db/pool.js";
 import { requireStaff } from "../../middleware/auth.js";
-import { uploadActivityPhotos, hasAllowedImageSignature, ACTIVITY_PHOTO } from "../../middleware/upload.js";
-import { asyncHandler, success, notFound, validation } from "../../lib/errors.js";
-import { scopeSql, assertInScope } from "../../lib/scope.js";
+import { uploadActivityPhotos, uploadImportSheet, hasAllowedImageSignature, ACTIVITY_PHOTO } from "../../middleware/upload.js";
+import { asyncHandler, success, notFound, validation, conflict } from "../../lib/errors.js";
+import { scopeSql, scopeOf, assertInScope } from "../../lib/scope.js";
 import { audit } from "../../lib/audit.js";
 import { activitySchema, filterSchema, toCsv } from "./activities.schema.js";
+import {
+  readSheet, indexMasters, mastersInScope, checkRows, markDuplicates, duplicateKey,
+  districtIdsOf, summarise, publicRows, buildTemplate,
+} from "./activities.import.js";
 import { notify, responsibleFor } from "../notifications/notifications.service.js";
 
 // Amrut Varg activity records: the public 'Amrut Varg' portal files them and
@@ -28,6 +32,8 @@ function applyFilters(f, conditions, params) {
   if (f.division_id) { params.push(f.division_id); conditions.push(`a.division_id = $${params.length}`); }
   if (f.district_id) { params.push(f.district_id); conditions.push(`a.district_id = $${params.length}`); }
   if (f.frequency) { params.push(f.frequency); conditions.push(`a.frequency = $${params.length}`); }
+  if (f.photo_status === "pending") conditions.push("jsonb_array_length(a.photos) = 0");
+  if (f.photo_status === "added") conditions.push("jsonb_array_length(a.photos) > 0");
   if (f.search) {
     params.push(`%${f.search}%`);
     const n = params.length;
@@ -56,7 +62,8 @@ async function summaryOf(where, params) {
             COUNT(DISTINCT a.district_id)::int AS districts,
             COUNT(*) FILTER (WHERE a.frequency = 'DAILY')::int AS daily,
             COUNT(*) FILTER (WHERE a.frequency = 'WEEKLY')::int AS weekly,
-            COUNT(*) FILTER (WHERE a.frequency = 'MONTHLY')::int AS monthly
+            COUNT(*) FILTER (WHERE a.frequency = 'MONTHLY')::int AS monthly,
+            COUNT(*) FILTER (WHERE jsonb_array_length(a.photos) = 0)::int AS photo_pending
      FROM varg_activities a WHERE ${where}`,
     params
   );
@@ -359,6 +366,129 @@ adminRouter.get("/pramukhs", asyncHandler(async (req, res) => {
   return success(res, { rows, totals });
 }));
 
+// ── Excel import ────────────────────────────────────────────────────────────
+//
+//   GET  /import/template.xlsx   the sheet to fill, its dropdowns confined to
+//                                the caller's jurisdiction
+//   POST /import/preview         checks an uploaded sheet; writes nothing
+//   POST /import                 checks it again and imports the rows that pass
+//
+// The sheet is sent twice rather than parked on the server between the two
+// steps, so there is no half-finished import to expire or clean up, and the
+// commit never trusts a check made before it.
+
+async function loadMasters() {
+  const [divisions, districts, talukas] = await Promise.all([
+    query(`SELECT id, name_mr, name_en, former_names FROM vibhags
+           WHERE deleted_at IS NULL AND is_active = TRUE ORDER BY display_order, name_mr`),
+    query(`SELECT id, vibhag_id, name_mr, name_en, former_names FROM districts
+           WHERE deleted_at IS NULL AND is_active = TRUE ORDER BY display_order, name_mr`),
+    query(`SELECT id, district_id, name_mr, name_en, former_names FROM talukas
+           WHERE deleted_at IS NULL AND is_active = TRUE ORDER BY display_order, name_mr`),
+  ]);
+  return { divisions, districts, talukas };
+}
+
+// Schools already on record in these districts, as duplicateKey → id. `db`
+// is the pool or a transaction.
+async function recordedSchools(db, districtIds) {
+  if (!districtIds.length) return new Map();
+  const rows = await db.query(
+    `SELECT id, district_id, institution_name FROM varg_activities
+     WHERE deleted_at IS NULL AND district_id = ANY($1::int[])`,
+    [districtIds]
+  );
+  return new Map(rows.map((r) => [duplicateKey(r.district_id, r.institution_name), r.id]));
+}
+
+async function checkUpload(req) {
+  if (!req.file) throw validation([{ field: "file", message: "Choose an Excel (.xlsx) file to import" }]);
+  const { sheet, rows } = await readSheet(req.file.buffer);
+  const checked = checkRows(rows, indexMasters(await loadMasters()), scopeOf(req.user));
+  return { file: req.file.originalname, sheet, checked };
+}
+
+adminRouter.get("/import/template.xlsx", asyncHandler(async (req, res) => {
+  const buffer = await buildTemplate(mastersInScope(await loadMasters(), scopeOf(req.user)));
+  res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.set("Content-Disposition", 'attachment; filename="amrut-varg-activities-import-template.xlsx"');
+  res.set("Cache-Control", "no-store");
+  return res.send(buffer);
+}));
+
+adminRouter.post("/import/preview", uploadImportSheet, asyncHandler(async (req, res) => {
+  const { file, sheet, checked } = await checkUpload(req);
+  markDuplicates(checked, await recordedSchools({ query }, districtIdsOf(checked)));
+  return success(res, { file, sheet, summary: summarise(checked), rows: publicRows(checked) });
+}));
+
+// Imports every row that passes and skips the rest; the response says which
+// is which, row by row. Each record is saved hidden with an unpublished
+// listing (see the schema note on `source`), and all of them are written in
+// one transaction: a failure part-way leaves nothing behind.
+adminRouter.post("/import", uploadImportSheet, asyncHandler(async (req, res) => {
+  const { file, sheet, checked } = await checkUpload(req);
+
+  const ids = await transaction(async (tx) => {
+    // One import at a time, so the same sheet uploaded twice at once cannot
+    // pass the duplicate check twice.
+    await tx.query(`SELECT pg_advisory_xact_lock(hashtext('varg_activities_import'))`);
+    markDuplicates(checked, await recordedSchools(tx, districtIdsOf(checked)));
+    const ready = checked.filter((r) => r.data);
+    if (!ready.length) return [];
+
+    const geo = new Map((await tx.query(
+      `SELECT d.id, d.name_mr AS district_mr, d.name_en AS district_en, v.name_mr AS vibhag_mr, v.name_en AS vibhag_en
+       FROM districts d JOIN vibhags v ON v.id = d.vibhag_id WHERE d.id = ANY($1::int[])`,
+      [districtIdsOf(ready)]
+    )).map((g) => [g.id, g]));
+
+    const created = [];
+    for (const { data } of ready) {
+      const g = geo.get(data.district_id);
+      const varg = await tx.queryOne(
+        `INSERT INTO vargs
+           (vibhag_mr, vibhag_en, district_mr, district_en, district_id, taluka, taluka_id,
+            school_name, coordinator_name, enrollment_count, is_active, status, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, FALSE, 'UNPUBLISHED', 'activity')
+         RETURNING id`,
+        [g.vibhag_mr, g.vibhag_en, g.district_mr, g.district_en, data.district_id,
+         data.taluka, data.taluka_id, data.institution_name, data.incharge_name, data.participant_count]
+      );
+      const row = await tx.queryOne(
+        `INSERT INTO varg_activities
+           (division_id, district_id, taluka_id, taluka, institution_name, incharge_name,
+            incharge_mobile, participant_count, frequency, description, varg_id, is_active, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, FALSE, 'import')
+         RETURNING id`,
+        [data.division_id, data.district_id, data.taluka_id, data.taluka, data.institution_name,
+         data.incharge_name, data.incharge_mobile, data.participant_count, data.frequency,
+         data.description, varg.id]
+      );
+      created.push(row.id);
+    }
+    return created;
+  });
+
+  const summary = summarise(checked);
+  await audit(req, "import", "varg_activities", null, { file, sheet, imported: ids.length, skipped: summary.invalid, ids });
+  return success(res, {
+    file, sheet, imported: ids.length, skipped: summary.invalid, ids, summary, rows: publicRows(checked),
+  }, ids.length ? 201 : 200);
+}));
+
+// An imported record's listing waits, unpublished, for the record to go
+// public. Only that untouched state is lifted: a listing an officer has
+// moderated since keeps the officer's decision.
+function publishImportedListing(tx, vargId, userId) {
+  if (!vargId) return null;
+  return tx.query(
+    `UPDATE vargs SET status = 'PUBLISHED', is_active = TRUE, moderated_by = $2, moderated_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND source = 'activity' AND status = 'UNPUBLISHED' AND moderated_at IS NULL AND deleted_at IS NULL`,
+    [vargId, userId]
+  );
+}
+
 const idSchema = z.coerce.number().int().positive();
 
 adminRouter.get("/:id", asyncHandler(async (req, res) => {
@@ -375,14 +505,90 @@ adminRouter.patch("/:id", asyncHandler(async (req, res) => {
   if (!id.success) throw notFound("Activity");
   const body = z.object({ is_active: z.boolean() }).safeParse(req.body ?? {});
   if (!body.success) throw validation(issuesOf(body.error));
-  const row = await queryOne(`SELECT district_id, division_id FROM varg_activities WHERE id = $1 AND deleted_at IS NULL`, [id.data]);
+  const row = await queryOne(
+    `SELECT district_id, division_id, photos, varg_id FROM varg_activities WHERE id = $1 AND deleted_at IS NULL`,
+    [id.data]
+  );
   if (!row) throw notFound("Activity");
   await assertInScope(req.user, { districtId: row.district_id, divisionId: row.division_id });
-  const updated = await queryOne(
-    `UPDATE varg_activities SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, is_active`,
-    [body.data.is_active, id.data]
-  );
+  // The form's rule holds for imports too: nothing public without a photo.
+  if (body.data.is_active && !(Array.isArray(row.photos) && row.photos.length)) {
+    throw validation([{ field: "photos", message: "Add at least one photograph before showing this record publicly" }]);
+  }
+  const updated = await transaction(async (tx) => {
+    const updated = await tx.queryOne(
+      `UPDATE varg_activities SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, is_active`,
+      [body.data.is_active, id.data]
+    );
+    if (body.data.is_active) await publishImportedListing(tx, row.varg_id, req.user.id);
+    return updated;
+  });
   await audit(req, "update", "varg_activities", id.data, { is_active: body.data.is_active });
+  return success(res, updated);
+}));
+
+// POST /admin/varg-activities/:id/photos — adds photographs to a record (an
+// import arrives with none), up to the form's three in all. With show=true
+// the record, and an imported record's listing, go public in the same step.
+adminRouter.post("/:id/photos", uploadActivityPhotos, asyncHandler(async (req, res) => {
+  const files = req.files ?? [];
+  let row;
+  try {
+    const id = idSchema.safeParse(req.params.id);
+    if (!id.success) throw notFound("Activity");
+    row = await queryOne(
+      `SELECT id, district_id, division_id, photos, varg_id FROM varg_activities WHERE id = $1 AND deleted_at IS NULL`,
+      [id.data]
+    );
+    if (!row) throw notFound("Activity");
+    await assertInScope(req.user, { districtId: row.district_id, divisionId: row.division_id });
+
+    const held = Array.isArray(row.photos) ? row.photos.length : 0;
+    const issues = [];
+    if (!files.length) issues.push({ field: "photos", message: "Choose at least one photograph" });
+    if (held + files.length > ACTIVITY_PHOTO.max) {
+      issues.push({ field: "photos", message: `A record holds at most ${ACTIVITY_PHOTO.max} photographs; this one already has ${held}` });
+    }
+    for (const f of files) {
+      if (!(await hasAllowedImageSignature(f.path, { allowGif: false, expectedMime: f.mimetype }))) {
+        issues.push({ field: "photos", message: `${f.originalname} is not a valid JPG, PNG or WEBP image` });
+      }
+    }
+    if (issues.length) throw validation(issues);
+  } catch (err) {
+    await discard(files);
+    throw err;
+  }
+
+  const show = String(req.body?.show ?? "") === "true";
+  const added = files.map((f) => ({
+    url: `/uploads/activities/${f.filename}`,
+    originalName: f.originalname,
+    mimeType: f.mimetype,
+    size: f.size,
+  }));
+
+  let updated;
+  try {
+    updated = await transaction(async (tx) => {
+      // The count is checked again in the UPDATE itself, so two uploads at
+      // once cannot take a record past the limit.
+      const r = await tx.queryOne(
+        `UPDATE varg_activities
+         SET photos = photos || $1::jsonb, is_active = is_active OR $2::boolean, updated_at = NOW()
+         WHERE id = $3 AND deleted_at IS NULL AND jsonb_array_length(photos) + $4 <= $5
+         RETURNING id, photos, is_active`,
+        [JSON.stringify(added), show, row.id, added.length, ACTIVITY_PHOTO.max]
+      );
+      if (!r) throw conflict("The record changed while uploading. Reload the list and try again.", "photos");
+      if (show) await publishImportedListing(tx, row.varg_id, req.user.id);
+      return r;
+    });
+  } catch (err) {
+    await discard(files);
+    throw err;
+  }
+  await audit(req, "update", "varg_activities", row.id, { photos_added: added.length, shown: show });
   return success(res, updated);
 }));
 

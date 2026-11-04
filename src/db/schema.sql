@@ -939,3 +939,11 @@ CREATE INDEX IF NOT EXISTS idx_varg_activities_created ON varg_activities(create
 -- An activity report also publishes the school in the public "कार्यरत अमृत
 -- वर्ग" listing; this links the two so removing the report can unlist it.
 ALTER TABLE varg_activities ADD COLUMN IF NOT EXISTS varg_id INTEGER REFERENCES vargs(id) ON DELETE SET NULL;
+
+-- Where a record came from: the public portal, or an officer's Excel import.
+-- A spreadsheet cannot carry photographs, so an imported record arrives
+-- hidden with an unpublished listing, and goes public once photos are added.
+ALTER TABLE varg_activities ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'portal'
+  CONSTRAINT varg_activities_source_chk CHECK (source IN ('portal', 'import'));
+CREATE INDEX IF NOT EXISTS idx_varg_activities_institution
+  ON varg_activities(district_id, LOWER(institution_name)) WHERE deleted_at IS NULL;
