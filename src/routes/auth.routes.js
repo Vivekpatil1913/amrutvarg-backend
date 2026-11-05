@@ -12,7 +12,7 @@ import { env } from "../config/env.js";
 
 const router = Router();
 const loginLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 24 * 60 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,

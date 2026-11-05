@@ -29,8 +29,8 @@ export const env = {
   },
 
   auth: {
-    maxAttempts: parseInt(optional("LOGIN_MAX_ATTEMPTS", "5"), 10),
-    lockMinutes: parseInt(optional("LOGIN_LOCK_MINUTES", "15"), 10),
+    maxAttempts: parseInt(optional("LOGIN_MAX_ATTEMPTS", "15"), 10),
+    lockMinutes: parseInt(optional("LOGIN_LOCK_MINUTES", "1540"), 10),
   },
 
   cors: {
