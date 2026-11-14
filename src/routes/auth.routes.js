@@ -11,15 +11,51 @@ import { asyncHandler, unauthorized, success, AppError, validation, conflict } f
 import { env } from "../config/env.js";
 
 const router = Router();
-// Counts failed attempts only, so colleagues signing in from one office IP do
-// not use up each other's allowance. Every wrong password still counts.
-const loginLimit = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,
-  message: { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts. Please try again later." } },
+
+// Sign-in brute-force protection. Only a wrong email or password (401) is
+// counted, so signing in successfully, as often as you like and with as many
+// accounts as you like, is never refused. Two counters:
+//  - per account + IP: stops guessing one account's password, without one
+//    person's typos pausing colleagues on the same network, and without a
+//    stranger elsewhere being able to lock a real user out.
+//  - per IP, far higher: stops one address trying passwords across accounts.
+// A successful sign-in clears that account's count. Limits are in env.auth.
+const normaliseEmail = (value) => String(value ?? "").trim().toLowerCase().slice(0, 255);
+const accountKey = (req) => `${req.ip}|${normaliseEmail(req.body?.email)}`;
+
+const minutesUntil = (resetTime) => {
+  const minutes = Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 60_000));
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+};
+
+const failedLoginLimit = ({ limit, keyGenerator, scope }) =>
+  rateLimit({
+    windowMs: env.auth.lockMinutes * 60 * 1000,
+    limit,
+    keyGenerator,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    // Only 401s stay counted. Any other response, these limiters' own 429s and
+    // server errors included, is taken back off the count.
+    requestWasSuccessful: (_req, res) => res.statusCode !== 401,
+    message: (req) => ({
+      error: {
+        code: "RATE_LIMITED",
+        message: `Too many failed sign-in attempts ${scope}. Please try again in ${minutesUntil(req.rateLimit.resetTime)}.`,
+      },
+    }),
+  });
+
+const ipLoginLimit = failedLoginLimit({
+  limit: env.auth.maxAttemptsPerIp,
+  scope: "from this network",
+});
+
+const accountLoginLimit = failedLoginLimit({
+  limit: env.auth.maxAttempts,
+  keyGenerator: accountKey,
+  scope: "for this account",
 });
 
 const loginSchema = z.object({
@@ -49,7 +85,8 @@ const publicUser = (user) => ({
 
 router.post(
   "/login",
-  loginLimit,
+  ipLoginLimit,
+  accountLoginLimit,
   asyncHandler(async (req, res) => {
     const body = loginSchema.safeParse(req.body);
     if (!body.success) throw unauthorized("Invalid credentials");
@@ -65,6 +102,9 @@ router.post(
 
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) throw unauthorized("Invalid email or password");
+
+    // The right password ends the run of failures for this account.
+    await accountLoginLimit.resetKey(accountKey(req));
 
     // Create session
     const expiresAt = new Date(Date.now() + env.jwt.sessionHours * 60 * 60 * 1000);

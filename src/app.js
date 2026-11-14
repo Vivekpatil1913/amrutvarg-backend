@@ -15,7 +15,8 @@ const __dir = path.dirname(fileURLToPath(import.meta.url));
 export function createApp() {
   const app = express();
 
-  app.set("trust proxy", 1);
+  // How many proxies sit in front of Node; see TRUST_PROXY in config/env.js.
+  app.set("trust proxy", env.trustProxy);
   app.disable("x-powered-by");
 
   // Security headers

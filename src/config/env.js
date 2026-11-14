@@ -10,6 +10,13 @@ function optional(name, fallback = "") {
   return process.env[name] ?? fallback;
 }
 
+// Express's "trust proxy": a hop count ("2"), or subnets ("loopback, 10.0.0.0/8").
+function trustProxySetting(value) {
+  if (/^\d+$/.test(value)) return parseInt(value, 10);
+  if (value === "false") return false;
+  return value;
+}
+
 export const env = {
   nodeEnv: optional("NODE_ENV", "development"),
   port: parseInt(optional("PORT", "4000"), 10),
@@ -28,10 +35,27 @@ export const env = {
     sessionHours: parseInt(optional("SESSION_HOURS", "8"), 10),
   },
 
+  // Sign-in brute-force protection (src/routes/auth.routes.js). Only wrong
+  // credentials count: a successful sign-in never uses up an allowance, and it
+  // clears that account's failures.
   auth: {
-    maxAttempts: parseInt(optional("LOGIN_MAX_ATTEMPTS", "15"), 10),
-    lockMinutes: parseInt(optional("LOGIN_LOCK_MINUTES", "1540"), 10),
+    // Wrong passwords for one account from one IP before that pair is paused.
+    maxAttempts: parseInt(optional("LOGIN_MAX_ATTEMPTS", "10"), 10),
+    // Wrong passwords from one IP across every account, against credential
+    // stuffing. Far above what an office full of real people mistypes.
+    maxAttemptsPerIp: parseInt(optional("LOGIN_MAX_ATTEMPTS_PER_IP", "100"), 10),
+    // Window the counts above are measured over; a pause never lasts longer.
+    lockMinutes: parseInt(optional("LOGIN_LOCK_MINUTES", "15"), 10),
   },
+
+  // Proxies between the visitor and Node, so req.ip (which every rate limit
+  // keys on) is the visitor and not a proxy. Production runs
+  // CloudFront → nginx → Node: 1 trusts nginx only, which makes req.ip a
+  // CloudFront edge server shared by many visitors; 2 also trusts CloudFront.
+  // Use 2 only once the server accepts traffic from CloudFront alone (security
+  // group limited to the com.amazonaws.global.cloudfront.origin-facing prefix
+  // list), or anyone reaching it directly can forge their IP.
+  trustProxy: trustProxySetting(optional("TRUST_PROXY", "1")),
 
   // Anonymous API requests per IP per 15 minutes. Sized for a crowd, not one
   // person: a single home page view is 17 requests, and a whole office, school
