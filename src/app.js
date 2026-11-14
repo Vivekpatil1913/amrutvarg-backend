@@ -46,19 +46,23 @@ export function createApp() {
     res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } }));
   app.use("/uploads", express.static(uploadDir));
 
-  // Global rate limit
+  // Attach user from session. Runs before the rate limit, which needs to know
+  // who is signed in; a request with no valid token costs no database query.
+  app.use(attachUser);
+
+  // Global rate limit, for anonymous traffic only. Sign-in is left out because
+  // it has its own stricter limit in auth.routes.js, so public page views from
+  // a shared IP can never lock an admin out of the panel.
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: 300,
+      max: env.rateLimit.max,
       standardHeaders: true,
       legacyHeaders: false,
+      skip: (req) => Boolean(req.user) || req.path === "/api/v1/auth/login",
       message: { error: { code: "RATE_LIMITED", message: "Too many requests. Please slow down." } },
     })
   );
-
-  // Attach user from session
-  app.use(attachUser);
 
   // API routes
   app.use("/api/v1", buildRouter());

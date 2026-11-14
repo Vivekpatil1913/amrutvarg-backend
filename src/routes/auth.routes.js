@@ -11,11 +11,14 @@ import { asyncHandler, unauthorized, success, AppError, validation, conflict } f
 import { env } from "../config/env.js";
 
 const router = Router();
+// Counts failed attempts only, so colleagues signing in from one office IP do
+// not use up each other's allowance. Every wrong password still counts.
 const loginLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts. Please try again later." } },
 });
 

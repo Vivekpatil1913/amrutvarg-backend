@@ -33,6 +33,13 @@ export const env = {
     lockMinutes: parseInt(optional("LOGIN_LOCK_MINUTES", "15"), 10),
   },
 
+  // Anonymous API requests per IP per 15 minutes. Sized for a crowd, not one
+  // person: a single home page view is 17 requests, and a whole office, school
+  // network or mobile carrier's NAT can share one address.
+  rateLimit: {
+    max: parseInt(optional("API_RATE_LIMIT", "3000"), 10),
+  },
+
   cors: {
     origins: [
       optional("ADMIN_ORIGIN", "http://localhost:5173"),
