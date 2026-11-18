@@ -29,47 +29,8 @@ async function upsertAdmin() {
   }
 }
 
-async function seedAnnouncements() {
-  const { rows: existing } = await pool.query(
-    `SELECT COUNT(*) AS count FROM announcements`
-  );
-  if (parseInt(existing[0].count) > 0) {
-    console.log("✓ Announcements already seeded");
-    return;
-  }
-
-  const announcements = [
-    {
-      title_mr: "अमृत वर्ग नोंदणी सुरू आहे",
-      title_en: "Amrut Varg Registration Open",
-      desc_mr: "राज्यभरातील विद्यार्थी आता जवळच्या अमृत वर्गात नोंदणी करू शकतात.",
-      desc_en: "Students across Maharashtra can now enroll in their nearest Amrut Varg.",
-      status: "new",
-      pinned: true,
-      is_active: true,
-      display_order: 1,
-    },
-    {
-      title_mr: "मार्गदर्शक सूचना व परिपत्रके लवकरच उपलब्ध",
-      title_en: "Guidelines & Circulars Coming Soon",
-      desc_mr: "अमृत वर्गाच्या संचालनासाठी मार्गदर्शक सूचना लवकरच प्रकाशित होतील.",
-      desc_en: "Guidelines for running Amrut Varg will be published soon.",
-      status: "comingSoon",
-      pinned: false,
-      is_active: true,
-      display_order: 2,
-    },
-  ];
-
-  for (const a of announcements) {
-    await pool.query(
-      `INSERT INTO announcements (title_mr, title_en, desc_mr, desc_en, status, pinned, is_active, display_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [a.title_mr, a.title_en, a.desc_mr, a.desc_en, a.status, a.pinned, a.is_active, a.display_order]
-    );
-  }
-  console.log(`✓ Seeded ${announcements.length} announcements`);
-}
+// Announcements are not seeded: they are created only from the CMS
+// (Admin → Announcements), so a fresh database shows no dummy notices.
 
 async function seedStories() {
   const { rows: existing } = await pool.query(`SELECT COUNT(*) AS count FROM stories`);
@@ -255,7 +216,6 @@ async function main() {
   try {
     await upsertAdmin();
     await seedSettings();
-    await seedAnnouncements();
     await seedStories();
     await seedVargs();
     await seedContacts();
