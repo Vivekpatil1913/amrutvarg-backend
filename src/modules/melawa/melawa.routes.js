@@ -24,15 +24,17 @@ const SELECT = `SELECT m.*, v.name_mr AS division_mr, v.name_en AS division_en,
 // ── Public ──────────────────────────────────────────────────────────────────
 //
 // GET /api/v1/melawa/active — every live melawa, state-wide first, then by
-// date. The ticker is on every page, so the answer is cached in-process for a
-// short while and marked cacheable for browsers and proxies; any admin write
-// clears the in-process copy.
+// date. Read straight from the database on every request and marked
+// no-store, so a melawa added, switched on or switched off in the CMS shows
+// on the very next page load (the same as announcements). The query is small;
+// no cache sits in front of it.
 
 export const publicRouter = Router();
 
-const CACHE_MS = 30_000;
-const cache = new Map();
-export const clearMelawaCache = () => cache.clear();
+// Kept so existing callers still work; there is no cache left to clear.
+export const clearMelawaCache = () => {};
+
+const NO_STORE = "no-store, no-cache, must-revalidate, proxy-revalidate";
 
 const activeQuery = z.object({
   division_id: z.union([z.coerce.number().int().positive(), z.literal("")]).optional().default(""),
@@ -44,38 +46,30 @@ publicRouter.get("/active", async (req, res, next) => {
     const parsed = activeQuery.safeParse(req.query);
     if (!parsed.success) throw validation(issuesOf(parsed.error));
     const { division_id: divisionId, district_id: districtId } = parsed.data;
-    const key = `${divisionId}|${districtId}`;
-    const hit = cache.get(key);
-    let rows;
-    if (hit && hit.expires > Date.now()) {
-      rows = hit.rows;
-    } else {
-      // With a place given, only what applies there: state-wide, that
-      // division's, and that district's. Without one, everything live.
-      const params = [];
-      let where = LIVE;
-      if (divisionId || districtId) {
-        const parts = ["m.jurisdiction_scope = 'STATE'"];
-        // A district melawa also carries its division's id, so the division
-        // match is limited to division-level rows — otherwise every district
-        // in the division would see its neighbours' melawas.
-        if (divisionId) { params.push(divisionId); parts.push(`(m.jurisdiction_scope = 'DIVISION' AND m.target_division_id = $${params.length})`); }
-        if (districtId) { params.push(districtId); parts.push(`(m.jurisdiction_scope = 'DISTRICT' AND m.target_district_id = $${params.length})`); }
-        where += ` AND (${parts.join(" OR ")})`;
-      }
-      rows = await query(
-        `${SELECT.replace("SELECT m.*", `SELECT m.id, m.title_mr, m.title_en, m.event_date, m.end_date,
-                m.start_time, m.end_time, m.venue_mr, m.venue_en, m.maps_url,
-                m.jurisdiction_scope, m.target_division_id, m.target_district_id,
-                m.highlights_mr, m.highlights_en, m.created_at`)}
-         WHERE ${where}
-         ORDER BY CASE m.jurisdiction_scope WHEN 'STATE' THEN 0 WHEN 'DIVISION' THEN 1 ELSE 2 END,
-                  m.event_date, m.start_time`,
-        params
-      );
-      cache.set(key, { rows, expires: Date.now() + CACHE_MS });
+    // With a place given, only what applies there: state-wide, that
+    // division's, and that district's. Without one, everything live.
+    const params = [];
+    let where = LIVE;
+    if (divisionId || districtId) {
+      const parts = ["m.jurisdiction_scope = 'STATE'"];
+      // A district melawa also carries its division's id, so the division
+      // match is limited to division-level rows — otherwise every district
+      // in the division would see its neighbours' melawas.
+      if (divisionId) { params.push(divisionId); parts.push(`(m.jurisdiction_scope = 'DIVISION' AND m.target_division_id = $${params.length})`); }
+      if (districtId) { params.push(districtId); parts.push(`(m.jurisdiction_scope = 'DISTRICT' AND m.target_district_id = $${params.length})`); }
+      where += ` AND (${parts.join(" OR ")})`;
     }
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    const rows = await query(
+      `${SELECT.replace("SELECT m.*", `SELECT m.id, m.title_mr, m.title_en, m.event_date, m.end_date,
+              m.start_time, m.end_time, m.venue_mr, m.venue_en, m.maps_url,
+              m.jurisdiction_scope, m.target_division_id, m.target_district_id,
+              m.highlights_mr, m.highlights_en, m.created_at`)}
+       WHERE ${where}
+       ORDER BY CASE m.jurisdiction_scope WHEN 'STATE' THEN 0 WHEN 'DIVISION' THEN 1 ELSE 2 END,
+                m.event_date, m.start_time`,
+      params
+    );
+    res.set("Cache-Control", NO_STORE);
     return success(res, rows);
   } catch (err) {
     next(err);

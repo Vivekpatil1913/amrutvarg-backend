@@ -96,6 +96,8 @@ router.get(
          AND (until_date IS NULL OR until_date >= CURRENT_DATE)
        ORDER BY pinned DESC, display_order ASC, date DESC`
     );
+    // Always fresh: a change in the CMS shows on the next page load.
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     return success(res, rows);
   })
 );
